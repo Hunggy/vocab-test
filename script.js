@@ -442,14 +442,17 @@ function initApp() {
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
         } else {
-            document.getElementById('wordDisplay').textContent = currentWord.example || '';
+            // 句子填空模式：把单词替换成 ____
+            const example = currentWord.example || '';
+            const blank = example.replace(currentWord.word, '____');
+            document.getElementById('wordDisplay').textContent = blank;
             document.getElementById('exampleDisplay').textContent = '';
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
         }
         document.getElementById('exampleCnDisplay').textContent = '';
         $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
-        if (autoSpeak && testDirection !== 1) speak(currentWord.word);
+        if (autoSpeak && testDirection === 0) speak(currentWord.word);
         const progress = (speedIndex / speedList.length) * 100;
         document.getElementById('progressFill').style.width = progress + '%';
         document.getElementById('scoreLabel').textContent = `进度: ${speedIndex + 1}/${speedList.length}`;
@@ -571,7 +574,10 @@ function initApp() {
                     document.getElementById('wordDisplay').textContent = currentWord.chinese;
                     document.getElementById('exampleDisplay').textContent = '';
                 } else {
-                    document.getElementById('wordDisplay').textContent = currentWord.example || '';
+                    // 句子填空模式：把单词替换成 ____
+                    const example = currentWord.example || '';
+                    const blank = example.replace(currentWord.word, '____');
+                    document.getElementById('wordDisplay').textContent = blank;
                     document.getElementById('exampleDisplay').textContent = '';
                 }
                 document.getElementById('exampleCnDisplay').textContent =
@@ -601,9 +607,14 @@ function initApp() {
             return;
         }
         if (currentWord && !isViewingHistory) {
+            // 保存历史记录时，如果是句子填空模式，保存替换后的句子
+            const blankExample = testDirection === 2 
+                ? (currentWord.example || '').replace(currentWord.word, '____') 
+                : (currentWord.example || '');
+                
             history.push({
                 idx: currentWordIndex, word: currentWord.word, chinese: currentWord.chinese,
-                example: currentWord.example, blank: currentWord.example,
+                example: currentWord.example, blank: blankExample,
                 example_cn: currentWord.example_cn, dir: testDirection,
                 opts: [...currentOptions], correct: correctIndex,
                 hard: currentWordIndex !== null && hardWords.has(currentWordIndex)
@@ -664,14 +675,17 @@ function initApp() {
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
         } else {
-            document.getElementById('wordDisplay').textContent = currentWord.example || '';
+            // 句子填空模式：把单词替换成 ____
+            const example = currentWord.example || '';
+            const blank = example.replace(currentWord.word, '____');
+            document.getElementById('wordDisplay').textContent = blank;
             document.getElementById('exampleDisplay').textContent = '';
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
         }
         document.getElementById('exampleCnDisplay').textContent = '';
         $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
-        if (autoSpeak && testDirection !== 1) speak(currentWord.word);
+        if (autoSpeak && testDirection === 0) speak(currentWord.word);
         updateScoreAndProgress();
         saveProgress();
     }
