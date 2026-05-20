@@ -263,11 +263,26 @@ function loadVocabulary() {
     let idx = 0;
     Object.keys(vocabularyData.groups).forEach(date => {
         vocabularyData.groups[date].forEach(word => {
+            // 添加第一个单词 (word.a)
             vocabulary.push({
                 _idx: idx,
                 id: word.id,
                 word: word.a,
                 synonym: word.b,
+                chinese: word.ch,
+                example: word.ex,
+                example_cn: word.cn,
+                date: date,
+                synonymIndices: []
+            });
+            idx++;
+            
+            // 添加第二个单词 (word.b) - 作为独立的单词条目
+            vocabulary.push({
+                _idx: idx,
+                id: word.id,  // 共享同一个 id，用于分组
+                word: word.b,
+                synonym: word.a,
                 chinese: word.ch,
                 example: word.ex,
                 example_cn: word.cn,
