@@ -200,7 +200,7 @@ function initApp() {
         }
         document.getElementById('exampleCnDisplay').textContent = '';
         $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
-        if (autoSpeak && testDirection !== 1) speak(currentWord.word);
+        if (autoSpeak && testDirection === 0) speak(currentWord.word);
         const progress = (speedIndex / speedList.length) * 100;
         document.getElementById('progressFill').style.width = progress + '%';
         document.getElementById('scoreLabel').textContent = `进度: ${speedIndex + 1}/${speedList.length}`;
@@ -422,7 +422,7 @@ function initApp() {
         }
         document.getElementById('exampleCnDisplay').textContent = '';
         $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
-        if (autoSpeak && testDirection !== 1) speak(currentWord.word);
+        if (autoSpeak && testDirection === 0) speak(currentWord.word);
         updateScoreAndProgress();
         saveProgress();
     }
