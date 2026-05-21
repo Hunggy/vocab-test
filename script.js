@@ -383,7 +383,13 @@ function initApp() {
         });
         set.delete(correctAnswer);
         if (optionType === 'english' && currentWordIndex !== null) {
-            (vocabulary[currentWordIndex].synonymIndices || []).forEach(si => set.delete(vocabulary[si].word));
+            // 删除当前单词的同义词，避免在选项中出现
+            const currentWord = vocabulary[currentWordIndex];
+            if (currentWord.synonym) {
+                set.delete(currentWord.synonym);
+            }
+            // 也删除通过同义词关系关联的单词
+            (currentWord.synonymIndices || []).forEach(si => set.delete(vocabulary[si].word));
         }
         const wrongs = [...set].sort(() => Math.random() - 0.5).slice(0, 3);
         while (wrongs.length < 3) wrongs.push('(其他选项)');
@@ -459,14 +465,19 @@ function initApp() {
         } else {
             // 句子填空模式：把单词或同义词替换成 ____
             let example = currentWord.example || '';
-            // 先尝试替换同义词（因为例句通常用的是另一个词）
-            if (currentWord.synonym && example.includes(currentWord.synonym)) {
-                example = example.replace(currentWord.synonym, '____');
-            } 
-            // 再尝试替换当前单词
-            else if (example.includes(currentWord.word)) {
-                example = example.replace(currentWord.word, '____');
+            const word = currentWord.word;
+            const synonym = currentWord.synonym;
+            const replacements = [];
+            if (synonym && example.includes(synonym)) {
+                replacements.push({ word: synonym, len: synonym.length });
             }
+            if (example.includes(word)) {
+                replacements.push({ word: word, len: word.length });
+            }
+            replacements.sort((a, b) => b.len - a.len);
+            replacements.forEach(r => {
+                example = example.replace(r.word, '____');
+            });
             document.getElementById('wordDisplay').textContent = example;
             document.getElementById('exampleDisplay').textContent = '';
             currentOptions = getRandomOptions(currentWord.word, 'english');
@@ -596,10 +607,26 @@ function initApp() {
                     document.getElementById('wordDisplay').textContent = currentWord.chinese;
                     document.getElementById('exampleDisplay').textContent = '';
                 } else {
-                    // 句子填空模式：把单词替换成 ____
-                    const example = currentWord.example || '';
-                    const blank = example.replace(currentWord.word, '____');
-                    document.getElementById('wordDisplay').textContent = blank;
+                    // 句子填空模式：把单词或同义词替换成 ____
+                    let example = currentWord.example || '';
+                    const word = currentWord.word;
+                    const synonym = currentWord.synonym;
+                    
+                    // 按长度排序，先替换较长的词，避免部分匹配
+                    const replacements = [];
+                    if (synonym && example.includes(synonym)) {
+                        replacements.push({ word: synonym, len: synonym.length });
+                    }
+                    if (example.includes(word)) {
+                        replacements.push({ word: word, len: word.length });
+                    }
+                    
+                    replacements.sort((a, b) => b.len - a.len);
+                    replacements.forEach(r => {
+                        example = example.replace(r.word, '____');
+                    });
+                    
+                    document.getElementById('wordDisplay').textContent = example;
                     document.getElementById('exampleDisplay').textContent = '';
                 }
                 document.getElementById('exampleCnDisplay').textContent =
@@ -623,16 +650,32 @@ function initApp() {
     function nextQuestion() {
         if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; }
         const avail = getAvailableWords();
-        if (!avail.length) { resetAndStart(); return; }
+        if (!avail.length) { 
+            showModalConfirm('⚠️ 没有可用单词', '当前选择的范围没有单词，请选择其他日期范围。', () => { closeModal(); }, '确定');
+            return; 
+        }
         if (!unmasteredIndices.length && !wrongQueue.length && !reviewQueue.length) {
             showModalConfirm('🎉 全部掌握！', '当前范围单词已全部掌握，重新开始。', () => { closeModal(); resetAndStart(); }, '重新开始');
             return;
         }
         if (currentWord && !isViewingHistory) {
             // 保存历史记录时，如果是句子填空模式，保存替换后的句子
-            const blankExample = testDirection === 2 
-                ? (currentWord.example || '').replace(currentWord.word, '____') 
-                : (currentWord.example || '');
+            let blankExample = currentWord.example || '';
+            if (testDirection === 2) {
+                const word = currentWord.word;
+                const synonym = currentWord.synonym;
+                const replacements = [];
+                if (synonym && blankExample.includes(synonym)) {
+                    replacements.push({ word: synonym, len: synonym.length });
+                }
+                if (blankExample.includes(word)) {
+                    replacements.push({ word: word, len: word.length });
+                }
+                replacements.sort((a, b) => b.len - a.len);
+                replacements.forEach(r => {
+                    blankExample = blankExample.replace(r.word, '____');
+                });
+            }
                 
             history.push({
                 idx: currentWordIndex, word: currentWord.word, chinese: currentWord.chinese,
@@ -699,18 +742,27 @@ function initApp() {
         } else {
             // 句子填空模式：把单词或同义词替换成 ____
             let example = currentWord.example || '';
-            // 先尝试替换同义词（因为例句通常用的是同义词）
-            if (currentWord.synonym && example.includes(currentWord.synonym)) {
-                example = example.replace(currentWord.synonym, '____');
+            const word = currentWord.word;
+            const synonym = currentWord.synonym;
+            
+            // 按长度排序，先替换较长的词，避免部分匹配（如 dominant 在 predominant 中）
+            const replacements = [];
+            if (synonym && example.includes(synonym)) {
+                replacements.push({ word: synonym, len: synonym.length });
             }
-            // 再尝试替换当前单词
-            else if (example.includes(currentWord.word)) {
-                example = example.replace(currentWord.word, '____');
+            if (example.includes(word)) {
+                replacements.push({ word: word, len: word.length });
             }
+            
+            replacements.sort((a, b) => b.len - a.len);
+            
+            replacements.forEach(r => {
+                example = example.replace(r.word, '____');
+            });
             document.getElementById('wordDisplay').textContent = example;
             document.getElementById('exampleDisplay').textContent = '';
-            currentOptions = getRandomOptions(currentWord.word, 'english');
-            correctIndex = currentOptions.indexOf(currentWord.word);
+            currentOptions = getRandomOptions(word, 'english');
+            correctIndex = currentOptions.indexOf(word);
         }
         document.getElementById('exampleCnDisplay').textContent = '';
         $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
@@ -780,7 +832,29 @@ function initApp() {
         const s = savedCurrentState;
         currentWordIndex = s.wi; currentWord = s.w; currentOptions = s.opts; correctIndex = s.ci;
         hasMistake = s.hm; isAnswering = s.ia; testDirection = s.td; isReviewQuestion = s.irq;
-        document.getElementById('wordDisplay').textContent = s.td === 0 && s.w ? s.w.word : (s.td === 1 && s.w ? s.w.chinese : (s.w ? s.w.example || '' : ''));
+        if (s.td === 0 && s.w) {
+            document.getElementById('wordDisplay').textContent = s.w.word;
+        } else if (s.td === 1 && s.w) {
+            document.getElementById('wordDisplay').textContent = s.w.chinese;
+        } else if (s.td === 2 && s.w) {
+            let example = s.w.example || '';
+            const word = s.w.word;
+            const synonym = s.w.synonym;
+            const replacements = [];
+            if (synonym && example.includes(synonym)) {
+                replacements.push({ word: synonym, len: synonym.length });
+            }
+            if (example.includes(word)) {
+                replacements.push({ word: word, len: word.length });
+            }
+            replacements.sort((a, b) => b.len - a.len);
+            replacements.forEach(r => {
+                example = example.replace(r.word, '____');
+            });
+            document.getElementById('wordDisplay').textContent = example;
+        } else {
+            document.getElementById('wordDisplay').textContent = '';
+        }
         document.getElementById('exampleDisplay').textContent = s.td === 0 && s.w ? s.w.example : '';
         document.getElementById('exampleCnDisplay').textContent = s.ecn || '';
         updateDirectionUI();
