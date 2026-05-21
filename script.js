@@ -697,10 +697,17 @@ function initApp() {
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
         } else {
-            // 句子填空模式：把单词替换成 ____
-            const example = currentWord.example || '';
-            const blank = example.replace(currentWord.word, '____');
-            document.getElementById('wordDisplay').textContent = blank;
+            // 句子填空模式：把单词或同义词替换成 ____
+            let example = currentWord.example || '';
+            // 先尝试替换同义词（因为例句通常用的是同义词）
+            if (currentWord.synonym && example.includes(currentWord.synonym)) {
+                example = example.replace(currentWord.synonym, '____');
+            }
+            // 再尝试替换当前单词
+            else if (example.includes(currentWord.word)) {
+                example = example.replace(currentWord.word, '____');
+            }
+            document.getElementById('wordDisplay').textContent = example;
             document.getElementById('exampleDisplay').textContent = '';
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
