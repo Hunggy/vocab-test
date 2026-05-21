@@ -502,6 +502,7 @@ function initApp() {
         if (i === correctIndex) {
             btn.classList.add('correct');
             speedCorrect++;
+            if (autoSpeak && (testDirection === 1 || testDirection === 2) && currentWord) speak(currentWord.word);
             if (testDirection !== 1) document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
         } else {
             btn.classList.add('wrong');
@@ -780,6 +781,7 @@ function initApp() {
             btn.classList.add('correct'); isAnswering = false;
             $$('.option-btn').forEach(b => b.disabled = true);
             totalAttempts++;
+            if (autoSpeak && (testDirection === 1 || testDirection === 2) && currentWord) speak(currentWord.word);
             if (testDirection !== 1 && currentWord) document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
             if (!hasMistake) {
                 correctAttempts++;
