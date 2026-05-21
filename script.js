@@ -1033,7 +1033,13 @@ function initApp() {
             document.getElementById('btnAutoSpeak').style.color = autoSpeak ? '#fff' : '';
             saveProgress();
         };
-        document.getElementById('btnSpeak').onclick = () => { if (currentWord) speak(currentWord.word); };
+        document.getElementById('btnSpeak').onclick = () => {
+            if (isViewingHistory && history.length) {
+                speak(history[history.length - 1].word);
+            } else if (currentWord) {
+                speak(currentWord.word);
+            }
+        };
         document.getElementById('btnExport').onclick = exportProgress;
         document.getElementById('btnImport').onclick = () => document.getElementById('importFile').click();
         document.getElementById('importFile').onchange = handleImport;
