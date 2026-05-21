@@ -454,7 +454,12 @@ function initApp() {
 
         if (testDirection === 0) {
             document.getElementById('wordDisplay').textContent = currentWord.word;
-            document.getElementById('exampleDisplay').textContent = currentWord.example;
+            // 英文选中文模式：如果例句不包含当前单词但包含同义词，替换成当前单词显示
+            let displayExample = currentWord.example;
+            if (currentWord.synonym && displayExample && !displayExample.includes(currentWord.word) && displayExample.includes(currentWord.synonym)) {
+                displayExample = displayExample.replace(currentWord.synonym, currentWord.word);
+            }
+            document.getElementById('exampleDisplay').textContent = displayExample;
             currentOptions = getRandomOptions(currentWord.chinese, 'chinese');
             correctIndex = currentOptions.indexOf(currentWord.chinese);
         } else if (testDirection === 1) {
@@ -732,7 +737,12 @@ function initApp() {
         document.getElementById('btnHardWord').textContent = hardWords.has(nextIdx) ? '★' : '⭐';
         if (testDirection === 0) {
             document.getElementById('wordDisplay').textContent = currentWord.word;
-            document.getElementById('exampleDisplay').textContent = currentWord.example;
+            // 英文选中文模式：如果例句不包含当前单词但包含同义词，替换成当前单词显示
+            let displayExample = currentWord.example;
+            if (currentWord.synonym && displayExample && !displayExample.includes(currentWord.word) && displayExample.includes(currentWord.synonym)) {
+                displayExample = displayExample.replace(currentWord.synonym, currentWord.word);
+            }
+            document.getElementById('exampleDisplay').textContent = displayExample;
             currentOptions = getRandomOptions(currentWord.chinese, 'chinese');
             correctIndex = currentOptions.indexOf(currentWord.chinese);
         } else if (testDirection === 1) {
