@@ -838,14 +838,18 @@ function initApp() {
             wi: currentWordIndex, w: currentWord, opts: [...currentOptions], ci: correctIndex,
             hm: hasMistake, ia: isAnswering,
             bs: [...$$('.option-btn')].map(b => ({ t: b.textContent, d: b.disabled, c: b.className })),
-            ecn: document.getElementById('exampleCnDisplay').textContent,
+            ecn: currentWord ? currentWord.example_cn : '',
             td: testDirection, irq: isReviewQuestion
         };
         isViewingHistory = true;
         const p = history[history.length - 1];
         document.getElementById('wordDisplay').textContent = p.dir === 0 ? p.word : (p.dir === 1 ? p.chinese : (p.blank || p.example));
         document.getElementById('exampleDisplay').textContent = p.dir === 0 ? p.example : '';
-        document.getElementById('exampleCnDisplay').textContent = p.example_cn || '';
+        if (p.dir === 2) {
+            document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(p.example_cn || '', p.chinese || '');
+        } else {
+            document.getElementById('exampleCnDisplay').textContent = p.example_cn || '';
+        }
         document.getElementById('stageHint').textContent = '上一题回顾：';
         document.getElementById('btnHardWord').textContent = p.hard ? '★' : '⭐';
         $$('.option-btn').forEach((b, i) => {
@@ -886,7 +890,11 @@ function initApp() {
             document.getElementById('wordDisplay').textContent = '';
         }
         document.getElementById('exampleDisplay').textContent = s.td === 0 && s.w ? s.w.example : '';
-        document.getElementById('exampleCnDisplay').textContent = s.ecn || '';
+        if (s.td === 2 && s.w) {
+            document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(s.ecn || '', s.w.chinese || '');
+        } else {
+            document.getElementById('exampleCnDisplay').textContent = s.ecn || '';
+        }
         updateDirectionUI();
         document.getElementById('btnHardWord').textContent = currentWordIndex !== null && hardWords.has(currentWordIndex) ? '★' : '⭐';
         $$('.option-btn').forEach((b, i) => { b.textContent = s.bs[i].t; b.className = s.bs[i].c; b.disabled = s.bs[i].d; });
