@@ -805,7 +805,7 @@ function initApp() {
             totalAttempts++;
             if (autoSpeak && (testDirection === 1 || testDirection === 2) && currentWord) speak(currentWord.word);
             if (testDirection !== 1 && currentWord) {
-                if (testDirection === 2) {
+                if (testDirection === 0 || testDirection === 2) {
                     document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(currentWord.example_cn, currentWord.chinese);
                 } else {
                     document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
@@ -846,7 +846,7 @@ function initApp() {
         const p = history[history.length - 1];
         document.getElementById('wordDisplay').textContent = p.dir === 0 ? p.word : (p.dir === 1 ? p.chinese : (p.blank || p.example));
         document.getElementById('exampleDisplay').textContent = p.dir === 0 ? p.example : '';
-        if (p.dir === 2) {
+        if (p.dir === 0 || p.dir === 2) {
             document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(p.example_cn || '', p.chinese || '');
         } else {
             document.getElementById('exampleCnDisplay').textContent = p.example_cn || '';
