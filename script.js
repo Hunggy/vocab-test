@@ -839,6 +839,7 @@ function initApp() {
             hm: hasMistake, ia: isAnswering,
             bs: [...$$('.option-btn')].map(b => ({ t: b.textContent, d: b.disabled, c: b.className })),
             ecn: currentWord ? currentWord.example_cn : '',
+            ecnd: document.getElementById('exampleCnDisplay').textContent || '',
             td: testDirection, irq: isReviewQuestion
         };
         isViewingHistory = true;
@@ -890,11 +891,7 @@ function initApp() {
             document.getElementById('wordDisplay').textContent = '';
         }
         document.getElementById('exampleDisplay').textContent = s.td === 0 && s.w ? s.w.example : '';
-        if (s.td === 2 && s.w) {
-            document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(s.ecn || '', s.w.chinese || '');
-        } else {
-            document.getElementById('exampleCnDisplay').textContent = s.ecn || '';
-        }
+        document.getElementById('exampleCnDisplay').textContent = s.ecnd || '';
         updateDirectionUI();
         document.getElementById('btnHardWord').textContent = currentWordIndex !== null && hardWords.has(currentWordIndex) ? '★' : '⭐';
         $$('.option-btn').forEach((b, i) => { b.textContent = s.bs[i].t; b.className = s.bs[i].c; b.disabled = s.bs[i].d; });
