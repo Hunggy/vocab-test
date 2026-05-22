@@ -24,6 +24,30 @@ body.dark {
     --progress-bg: #3a3a3a; --progress-fill: #5cbf60;
     --modal-overlay: rgba(0,0,0,0.7);
 }
+body.dark #btnSpeak {
+    background: var(--btn-bg) !important;
+    border: 1px solid var(--border) !important;
+}
+body.dark .toolbar .combo-wrap select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23888' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+    background-color: var(--btn-bg) !important;
+    color: var(--btn-fg) !important;
+    border-color: var(--border) !important;
+}
+body.dark .header-row .combo-wrap select {
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23888' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 12px;
+    background-color: var(--btn-bg) !important;
+    color: var(--btn-fg) !important;
+    border-color: var(--border) !important;
+}
+body.dark .header-row .combo-wrap select option {
+    background-color: var(--btn-bg) !important;
+    color: var(--btn-fg) !important;
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
     font-family: 'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans TC',sans-serif;
