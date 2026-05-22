@@ -508,12 +508,24 @@ function initApp() {
             btn.classList.add('correct');
             speedCorrect++;
             if (autoSpeak && (testDirection === 1 || testDirection === 2) && currentWord) speak(currentWord.word);
-            if (testDirection !== 1) document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+            if (testDirection !== 1) {
+                if (testDirection === 2) {
+                    document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(currentWord.example_cn, currentWord.chinese);
+                } else {
+                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+                }
+            }
         } else {
             btn.classList.add('wrong');
             speedMistakes.push(currentWordIndex);
             $$('.option-btn')[correctIndex].classList.add('correct');
-            if (testDirection !== 1) document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+            if (testDirection !== 1) {
+                if (testDirection === 2) {
+                    document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(currentWord.example_cn, currentWord.chinese);
+                } else {
+                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+                }
+            }
         }
         $$('.option-btn').forEach(b => b.disabled = true);
         document.getElementById('remainingLabel').textContent = `正确: ${speedCorrect}`;
@@ -792,7 +804,13 @@ function initApp() {
             $$('.option-btn').forEach(b => b.disabled = true);
             totalAttempts++;
             if (autoSpeak && (testDirection === 1 || testDirection === 2) && currentWord) speak(currentWord.word);
-            if (testDirection !== 1 && currentWord) document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+            if (testDirection !== 1 && currentWord) {
+                if (testDirection === 2) {
+                    document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(currentWord.example_cn, currentWord.chinese);
+                } else {
+                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+                }
+            }
             if (!hasMistake) {
                 correctAttempts++;
                 if (isReviewQuestion) masteredIndices.push(currentWordIndex);
@@ -1100,6 +1118,38 @@ function initApp() {
         uttr.lang = 'en-US';
         uttr.rate = 0.9;
         window.speechSynthesis.speak(uttr);
+    }
+
+    function highlightChineseMeaning(exampleCn, chinese) {
+        if (!exampleCn || !chinese) return exampleCn || '';
+        
+        let pattern = chinese;
+        if (chinese.includes('...')) {
+            const parts = chinese.split('...');
+            pattern = parts.filter(p => p.trim()).join('|');
+        }
+        
+        let result = exampleCn;
+        const regex = new RegExp(`(${pattern})`, 'g');
+        
+        if (regex.test(exampleCn)) {
+            result = exampleCn.replace(regex, '<span style="color:var(--accent);font-weight:600;">$1</span>');
+        } else {
+            const chars = chinese.replace(/[...的了是在]/g, '');
+            if (chars.length >= 2) {
+                for (let len = Math.min(chars.length, 4); len >= 2; len--) {
+                    for (let i = 0; i <= chars.length - len; i++) {
+                        const keyPart = chars.substring(i, i + len);
+                        const charRegex = new RegExp(`(${keyPart})`, 'g');
+                        if (charRegex.test(exampleCn)) {
+                            result = exampleCn.replace(charRegex, '<span style="color:var(--accent);font-weight:600;">$1</span>');
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     function exportProgress() {
