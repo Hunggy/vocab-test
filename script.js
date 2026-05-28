@@ -359,7 +359,9 @@ function initApp() {
 
     function getAvailableWords() {
         let pool = vocabulary;
-        if (selectedDate !== 'all') {
+        if (selectedDate === 'custom') {
+            pool = vocabulary.filter(v => v.id < 0);
+        } else if (selectedDate !== 'all') {
             const targetDate = getDateMapping(selectedDate);
             pool = vocabulary.filter(v => v.date === targetDate);
         }
