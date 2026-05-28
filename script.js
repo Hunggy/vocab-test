@@ -1281,6 +1281,11 @@ function initApp() {
                 customWords.forEach((w, i) => {
                     vocabulary.unshift({
                         id: -1 - i,
+                        word: w.a,
+                        chinese: w.ch,
+                        synonym: w.b,
+                        example: w.ex,
+                        example_cn: w.cn,
                         a: w.a,
                         ch: w.ch,
                         b: w.b,
