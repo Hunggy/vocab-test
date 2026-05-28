@@ -1082,6 +1082,8 @@ function initApp() {
         document.getElementById('btnExport').onclick = exportProgress;
         document.getElementById('btnImport').onclick = () => document.getElementById('importFile').click();
         document.getElementById('importFile').onchange = handleImport;
+        document.getElementById('btnImportCsv').addEventListener('click', () => { document.getElementById('importCsvFile').click(); });
+        document.getElementById('importCsvFile').onchange = handleCsvImport;
         document.getElementById('btnHardWord').addEventListener('click', toggleHardWord);
         document.getElementById('btnSlashWord').addEventListener('click', slashWord);
         document.getElementById('btnPrev').addEventListener('click', showPreviousQuestion);
@@ -1207,6 +1209,94 @@ function initApp() {
             }
         };
         reader.readAsText(file);
+    }
+    
+    function parseCSVLine(line) {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        result.push(current.trim());
+        return result;
+    }
+    
+    function parseCSV(text) {
+        const lines = text.trim().split(/\r?\n/);
+        if (lines.length < 2) return [];
+        
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const wordIndex = headers.indexOf('word');
+        const chineseIndex = headers.indexOf('chinese');
+        const synonymIndex = headers.indexOf('synonym');
+        const exampleIndex = headers.indexOf('example');
+        const exampleCnIndex = headers.indexOf('example_cn');
+        
+        if (wordIndex === -1 || chineseIndex === -1) {
+            showToast('CSV 文件必须包含 word 和 chinese 列');
+            return [];
+        }
+        
+        const words = [];
+        for (let i = 1; i < lines.length; i++) {
+            const values = parseCSVLine(lines[i]);
+            if (values.length > wordIndex && values.length > chineseIndex) {
+                words.push({
+                    a: values[wordIndex] || '',
+                    ch: values[chineseIndex] || '',
+                    b: synonymIndex !== -1 && values[synonymIndex] ? values[synonymIndex] : null,
+                    ex: exampleIndex !== -1 && values[exampleIndex] ? values[exampleIndex] : null,
+                    cn: exampleCnIndex !== -1 && values[exampleCnIndex] ? values[exampleCnIndex] : null
+                });
+            }
+        }
+        return words;
+    }
+    
+    function handleCsvImport(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const customWords = parseCSV(event.target.result);
+                if (customWords.length === 0) {
+                    showToast('CSV 导入失败，请检查文件格式');
+                    return;
+                }
+                
+                customWords.forEach((w, i) => {
+                    vocabulary.unshift({
+                        id: -1 - i,
+                        a: w.a,
+                        ch: w.ch,
+                        b: w.b,
+                        ex: w.ex,
+                        cn: w.cn
+                    });
+                });
+                
+                showToast(`成功导入 ${customWords.length} 个自定义词汇`);
+                
+                updateVocabMapping();
+                saveProgress();
+            } catch (err) {
+                showToast('CSV 解析失败：' + err.message);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
     }
 
     function updateTime() {
