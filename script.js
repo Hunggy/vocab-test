@@ -331,7 +331,7 @@ function initApp() {
         updateTime();
         setInterval(updateTime, 60000);
         bindEvents();
-        resetAndStart();
+        resetAndStart(true);
     }
 
     function applyFontSizes() {
@@ -508,7 +508,7 @@ function initApp() {
             }
             replacements.sort((a, b) => b.len - a.len);
             replacements.forEach(r => {
-                example = example.replace(r.word, '____');
+                example = example.replaceAll(r.word, '____');
             });
             document.getElementById('wordDisplay').textContent = example;
             document.getElementById('exampleDisplay').textContent = '';
@@ -734,7 +734,7 @@ function initApp() {
                     
                     replacements.sort((a, b) => b.len - a.len);
                     replacements.forEach(r => {
-                        example = example.replace(r.word, '____');
+                        example = example.replaceAll(r.word, '____');
                     });
                     
                     document.getElementById('wordDisplay').textContent = example;
@@ -787,7 +787,7 @@ function initApp() {
                 }
                 replacements.sort((a, b) => b.len - a.len);
                 replacements.forEach(r => {
-                    displayExample = displayExample.replace(r.word, '____');
+                    displayExample = displayExample.replaceAll(r.word, '____');
                 });
             } else if (testDirection === 0) {
                 // 英选中模式：把同义词替换成当前单词
@@ -900,7 +900,7 @@ function initApp() {
             replacements.sort((a, b) => b.len - a.len);
             
             replacements.forEach(r => {
-                example = example.replace(r.word, '____');
+                example = example.replaceAll(r.word, '____');
             });
             document.getElementById('wordDisplay').textContent = example;
             document.getElementById('exampleDisplay').textContent = '';
@@ -1074,7 +1074,7 @@ function initApp() {
             }
             replacements.sort((a, b) => b.len - a.len);
             replacements.forEach(r => {
-                example = example.replace(r.word, '____');
+                example = example.replaceAll(r.word, '____');
             });
             document.getElementById('wordDisplay').textContent = example;
         } else {
@@ -1186,11 +1186,12 @@ function initApp() {
         if (totalAttempts) document.getElementById('accuracyLabel').textContent = `正确率: ${Math.round(correctAttempts / totalAttempts * 100)}%`;
     }
 
-    function resetAndStart() {
+    function resetAndStart(preserveMastered = false) {
         if (isSpeedMode) return;
         const av = getAvailableWords();
         totalWords = av.length;
-        masteredIndices = []; unmasteredIndices = [...av];
+        if (!preserveMastered) masteredIndices = [];
+        unmasteredIndices = av.filter(i => !masteredIndices.includes(i));
         wrongQueue = []; reviewQueue = []; questionCounter = 0; history = [];
         document.getElementById('btnPrev').disabled = true;
         document.getElementById('btnReturn').disabled = true;
@@ -1528,7 +1529,7 @@ function initApp() {
     }
 
     function saveProgress() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ masteredIndices, wrongWords, hardWords: [...hardWords], testMode, testDirection, darkMode, fontSizes, selectedDate, autoSpeak })); } catch (e) { }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ masteredIndices, wrongWords, hardWords: [...hardWords], wrongQueue, reviewQueue, questionCounter, slashedWords: [...slashedWords], testMode, testDirection, darkMode, fontSizes, selectedDate, autoSpeak })); } catch (e) { }
     }
 
     function loadProgress() {
@@ -1536,7 +1537,12 @@ function initApp() {
             const d = JSON.parse(localStorage.getItem(STORAGE_KEY));
             if (d) {
                 masteredIndices = d.masteredIndices || []; wrongWords = d.wrongWords || {};
-                hardWords = new Set(d.hardWords || []); testMode = d.testMode ?? 0; testDirection = d.testDirection ?? 0;
+                hardWords = new Set(d.hardWords || []);
+                wrongQueue = d.wrongQueue || [];
+                reviewQueue = d.reviewQueue || [];
+                questionCounter = d.questionCounter || 0;
+                slashedWords = new Set(d.slashedWords || []);
+                testMode = d.testMode ?? 0; testDirection = d.testDirection ?? 0;
                 darkMode = d.darkMode ?? false; fontSizes = d.fontSizes || { large: 26, medium: 15, small: 12 };
                 selectedDate = d.selectedDate || '0509';
                 autoSpeak = d.autoSpeak ?? false;
