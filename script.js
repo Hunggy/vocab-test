@@ -1126,6 +1126,13 @@ function initApp() {
         document.getElementById('modalOverlay').onclick = (e) => {
             if (e.target === document.getElementById('modalOverlay')) closeModal();
         };
+
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        });
     }
 
     function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
