@@ -342,7 +342,15 @@ function initApp() {
 
     function updateDirectionUI() {
         const hint = document.getElementById('stageHint');
-        hint.textContent = testDirection === 0 ? '请选择中文解释:' : (testDirection === 1 ? '请选择英文单词:' : '请选择正确的单词填空:');
+        if (testDirection === 0) {
+            hint.textContent = '请选择中文解释:';
+        } else if (testDirection === 1) {
+            hint.textContent = '请选择英文单词:';
+        } else if (testDirection === 2) {
+            hint.textContent = '请选择正确的单词填空:';
+        } else if (testDirection === 3) {
+            hint.textContent = '🔊 听音拼写';
+        }
     }
 
     function getDateMapping(dateStr) {
@@ -469,6 +477,23 @@ function initApp() {
             document.getElementById('exampleDisplay').textContent = '';
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
+        } else if (testDirection === 3) {
+            // 听音拼写模式
+            document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
+            document.getElementById('exampleDisplay').textContent = '';
+            document.getElementById('exampleCnDisplay').textContent = '';
+            document.getElementById('optionsGrid').style.display = 'none';
+            document.getElementById('inputModeContainer').style.display = 'flex';
+            document.getElementById('inputModeContainer').style.flexDirection = 'column';
+            document.getElementById('inputModeContainer').style.alignItems = 'center';
+            document.getElementById('answerInput').value = '';
+            document.getElementById('answerInput').placeholder = '输入英文单词...';
+            document.getElementById('inputFeedback').textContent = '';
+            document.getElementById('answerInput').disabled = false;
+            document.getElementById('btnSubmitAnswer').disabled = false;
+            document.getElementById('answerInput').focus();
+            // 自动播放发音
+            setTimeout(() => speak(currentWord.word), 500);
         } else {
             // 句子填空模式：把单词或同义词替换成 ____
             let example = currentWord.example || '';
@@ -490,8 +515,11 @@ function initApp() {
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
         }
-        document.getElementById('exampleCnDisplay').textContent = '';
-        $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
+        if (testDirection !== 3) {
+            document.getElementById('optionsGrid').style.display = 'grid';
+            document.getElementById('inputModeContainer').style.display = 'none';
+            $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
+        }
         if (autoSpeak && testDirection === 0) speak(currentWord.word);
         const progress = (speedIndex / speedList.length) * 100;
         document.getElementById('progressFill').style.width = progress + '%';
@@ -502,6 +530,10 @@ function initApp() {
 
     function speedSelectOption(i) {
         if (!isSpeedMode || !isAnswering) return;
+        if (testDirection === 3) {
+            speedSubmitInput();
+            return;
+        }
         const btn = $$('.option-btn')[i];
         if (!btn || btn.disabled) return;
         isAnswering = false;
@@ -534,6 +566,40 @@ function initApp() {
         document.getElementById('accuracyLabel').textContent = `正确率: ${Math.round(speedCorrect / speedAttempts * 100)}%`;
         speedIndex++;
         nextTimeout = setTimeout(showSpeedQuestion, 800);
+    }
+
+    function speedSubmitInput() {
+        if (!isSpeedMode || !isAnswering) return;
+        if (!currentWord) return;
+        
+        const input = document.getElementById('answerInput');
+        const feedback = document.getElementById('inputFeedback');
+        const userAnswer = input.value.trim();
+        
+        if (!userAnswer) {
+            feedback.textContent = '请输入答案';
+            feedback.style.color = 'var(--remaining-fg)';
+            return;
+        }
+        
+        isAnswering = false;
+        speedAttempts++;
+        
+        if (userAnswer.toLowerCase() === currentWord.word.toLowerCase()) {
+            feedback.textContent = `✓ 正确！${currentWord.word} - ${currentWord.chinese}`;
+            feedback.style.color = 'var(--progress-fill)';
+            speedCorrect++;
+            document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn || '';
+        } else {
+            feedback.textContent = `✗ 错误！正确答案: ${currentWord.word}`;
+            feedback.style.color = 'var(--remaining-fg)';
+            speedMistakes.push(currentWordIndex);
+        }
+        
+        document.getElementById('remainingLabel').textContent = `正确: ${speedCorrect}`;
+        document.getElementById('accuracyLabel').textContent = `正确率: ${Math.round(speedCorrect / speedAttempts * 100)}%`;
+        speedIndex++;
+        nextTimeout = setTimeout(showSpeedQuestion, 1000);
     }
 
     function finishSpeedMode() {
@@ -602,6 +668,25 @@ function initApp() {
         document.getElementById('shortcutHint').textContent = '快捷键: 1-4选答案 | Enter/空格 下一题 | ←上一题 | →返回 | A收藏 | S斩';
         document.getElementById('btnSpeedMode').style.display = '';
         document.getElementById('btnExitSpeed').style.display = 'none';
+        
+        // 更新方向提示
+        updateDirectionUI();
+        
+        // 根据当前模式恢复界面显示
+        if (testDirection === 3) {
+            document.getElementById('optionsGrid').style.display = 'none';
+            document.getElementById('inputModeContainer').style.display = 'flex';
+            document.getElementById('inputModeContainer').style.flexDirection = 'column';
+            document.getElementById('inputModeContainer').style.alignItems = 'center';
+            document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
+            document.getElementById('answerInput').value = '';
+            document.getElementById('answerInput').placeholder = '输入英文单词...';
+            document.getElementById('inputFeedback').textContent = '';
+            document.getElementById('exampleCnDisplay').textContent = '';
+        } else {
+            document.getElementById('optionsGrid').style.display = 'grid';
+            document.getElementById('inputModeContainer').style.display = 'none';
+        }
 
         if (savedNormalState) {
             unmasteredIndices = savedNormalState.unmasteredIndices;
@@ -778,6 +863,23 @@ function initApp() {
             document.getElementById('exampleDisplay').textContent = '';
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
+        } else if (testDirection === 3) {
+            // 听音拼写模式
+            document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
+            document.getElementById('exampleDisplay').textContent = '';
+            document.getElementById('exampleCnDisplay').textContent = '';
+            document.getElementById('optionsGrid').style.display = 'none';
+            document.getElementById('inputModeContainer').style.display = 'flex';
+            document.getElementById('inputModeContainer').style.flexDirection = 'column';
+            document.getElementById('inputModeContainer').style.alignItems = 'center';
+            document.getElementById('answerInput').value = '';
+            document.getElementById('answerInput').placeholder = '输入英文单词...';
+            document.getElementById('inputFeedback').textContent = '';
+            document.getElementById('answerInput').disabled = false;
+            document.getElementById('btnSubmitAnswer').disabled = false;
+            document.getElementById('answerInput').focus();
+            // 自动播放发音
+            setTimeout(() => speak(currentWord.word), 500);
         } else {
             // 句子填空模式：把单词或同义词替换成 ____
             let example = currentWord.example || '';
@@ -803,11 +905,81 @@ function initApp() {
             currentOptions = getRandomOptions(word, 'english');
             correctIndex = currentOptions.indexOf(word);
         }
-        document.getElementById('exampleCnDisplay').textContent = '';
-        $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
+        if (testDirection !== 3) {
+            document.getElementById('optionsGrid').style.display = 'grid';
+            document.getElementById('inputModeContainer').style.display = 'none';
+            $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
+        }
         if (autoSpeak && testDirection === 0) speak(currentWord.word);
         updateScoreAndProgress();
         saveProgress();
+    }
+
+    function submitInputAnswer() {
+        if (!isAnswering || isViewingHistory || isBrowseMode) return;
+        if (isSpeedMode && testDirection === 3) {
+            speedSubmitInput();
+            return;
+        }
+        if (!currentWord) return;
+        
+        const input = document.getElementById('answerInput');
+        const feedback = document.getElementById('inputFeedback');
+        const userAnswer = input.value.trim();
+        
+        if (!userAnswer) {
+            feedback.textContent = '请输入答案';
+            feedback.style.color = 'var(--remaining-fg)';
+            return;
+        }
+        
+        totalAttempts++;
+        
+        if (testDirection === 3) {
+            // 听音拼写模式：英文必须完全匹配（不区分大小写）
+            if (userAnswer.toLowerCase() === currentWord.word.toLowerCase()) {
+                feedback.textContent = `✓ 正确！${currentWord.word} - ${currentWord.chinese}`;
+                feedback.style.color = 'var(--progress-fill)';
+                // 答对后不重复播放发音
+                
+                isAnswering = false;
+                
+                if (!hasMistake) {
+                    correctAttempts++;
+                    if (isReviewQuestion) masteredIndices.push(currentWordIndex);
+                    else reviewQueue.push({ idx: currentWordIndex, next: questionCounter + 15 });
+                }
+                
+                document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn || '';
+                updateScoreAndProgress();
+                saveProgress();
+                nextTimeout = setTimeout(nextQuestion, 1000);
+            } else {
+                feedback.textContent = `✗ 错误！正确答案: ${currentWord.word}`;
+                feedback.style.color = 'var(--remaining-fg)';
+                hasMistake = true;
+                
+                // 答错后记录错误，但不进入下一题
+                const s = String(currentWordIndex);
+                wrongWords[s] = (wrongWords[s] || 0) + 1;
+                const cnt = wrongWords[s];
+                let interval = 20; 
+                if (cnt === 1) interval = 5; 
+                else if (cnt === 2) interval = 10;
+                
+                const exist = wrongQueue.findIndex(x => x.idx === currentWordIndex);
+                if (exist >= 0) wrongQueue[exist] = { idx: currentWordIndex, cnt, next: questionCounter + interval };
+                else wrongQueue.push({ idx: currentWordIndex, cnt, next: questionCounter + interval });
+                
+                // 清空输入框，让用户继续尝试
+                input.value = '';
+                updateScoreAndProgress();
+                saveProgress();
+                
+                // 重新聚焦输入框
+                input.focus();
+            }
+        }
     }
 
     function selectOption(i) {
@@ -939,7 +1111,7 @@ function initApp() {
 
     function showBrowseMode(searchTerm = '') {
         isBrowseMode = true;
-        ['wordCard', 'optionsGrid', 'progressWrap', 'headerRow', 'bottomBar'].forEach(id => document.getElementById(id).style.display = 'none');
+        ['wordCard', 'optionsGrid', 'inputModeContainer', 'progressWrap', 'headerRow', 'bottomBar'].forEach(id => document.getElementById(id).style.display = 'none');
         document.getElementById('browseContainer').classList.add('active');
         const idxs = getAvailableWords();
         if (!idxs.length) { document.getElementById('browseList').innerHTML = '<p>无单词</p>'; return; }
@@ -987,7 +1159,18 @@ function initApp() {
     function hideBrowseMode() {
         isBrowseMode = false;
         document.getElementById('browseContainer').classList.remove('active');
-        ['wordCard', 'optionsGrid', 'progressWrap', 'headerRow', 'bottomBar'].forEach(id => document.getElementById(id).style.display = '');
+        ['wordCard', 'progressWrap', 'headerRow', 'bottomBar'].forEach(id => document.getElementById(id).style.display = '');
+        
+        // 根据当前模式设置正确的界面显示
+        if (testDirection === 3) {
+            document.getElementById('optionsGrid').style.display = 'none';
+            document.getElementById('inputModeContainer').style.display = 'flex';
+            document.getElementById('inputModeContainer').style.flexDirection = 'column';
+            document.getElementById('inputModeContainer').style.alignItems = 'center';
+        } else {
+            document.getElementById('optionsGrid').style.display = 'grid';
+            document.getElementById('inputModeContainer').style.display = 'none';
+        }
     }
 
     function updateScoreAndProgress() {
@@ -1018,6 +1201,12 @@ function initApp() {
         $$('.option-btn').forEach((b, i) => b.addEventListener('click', () => selectOption(i)));
         document.addEventListener('keydown', e => {
             if (document.getElementById('modalOverlay').classList.contains('active')) return;
+            
+            // 检查是否在输入框中，如果是则跳过快捷键（除了Enter键用于提交）
+            const activeElement = document.activeElement;
+            const isInputFocused = activeElement && (activeElement.id === 'answerInput' || activeElement.id === 'browseSearch');
+            if (isInputFocused && e.key !== 'Enter') return;
+            
             if (isBrowseMode) { if (e.key === 'Escape') hideBrowseMode(); return; }
             if (isSpeedMode) {
                 const k = e.key;
@@ -1034,7 +1223,7 @@ function initApp() {
             if (k === '2' && !isViewingHistory && isAnswering) { e.preventDefault(); selectOption(1); }
             if (k === '3' && !isViewingHistory && isAnswering) { e.preventDefault(); selectOption(2); }
             if (k === '4' && !isViewingHistory && isAnswering) { e.preventDefault(); selectOption(3); }
-            if ((k === 'Enter' || k === ' ') && !isViewingHistory && !isAnswering) { e.preventDefault(); if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; } nextQuestion(); }
+            if ((k === 'Enter' || k === ' ') && !isViewingHistory && !isAnswering && testDirection !== 3) { e.preventDefault(); if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; } nextQuestion(); }
             if (k === 'ArrowLeft') { e.preventDefault(); showPreviousQuestion(); }
             if (k === 'ArrowRight') { e.preventDefault(); returnToCurrentQuestion(); }
             if ((k === 'a' || k === 'A') && !isViewingHistory && currentWordIndex !== null) { e.preventDefault(); toggleHardWord(); }
@@ -1086,6 +1275,16 @@ function initApp() {
         document.getElementById('importFile').onchange = handleImport;
         document.getElementById('btnImportCsv').addEventListener('click', () => { document.getElementById('importCsvFile').click(); });
         document.getElementById('importCsvFile').onchange = handleCsvImport;
+        document.getElementById('btnSubmitAnswer').addEventListener('click', submitInputAnswer);
+        document.getElementById('answerInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitInputAnswer();
+            }
+        });
+        document.getElementById('answerInput').addEventListener('input', () => {
+            document.getElementById('inputFeedback').textContent = '';
+        });
         document.getElementById('btnHardWord').addEventListener('click', toggleHardWord);
         document.getElementById('btnSlashWord').addEventListener('click', slashWord);
         document.getElementById('btnPrev').addEventListener('click', showPreviousQuestion);
@@ -1298,6 +1497,22 @@ function initApp() {
                 
                 vocabulary.forEach((v, i) => { v._idx = i; });
                 saveProgress();
+                
+                // 刷新界面
+                updateDirectionUI();
+                
+                // 重置界面显示状态
+                if (testDirection === 3) {
+                    document.getElementById('optionsGrid').style.display = 'none';
+                    document.getElementById('inputModeContainer').style.display = 'flex';
+                    document.getElementById('inputModeContainer').style.flexDirection = 'column';
+                    document.getElementById('inputModeContainer').style.alignItems = 'center';
+                } else {
+                    document.getElementById('optionsGrid').style.display = 'grid';
+                    document.getElementById('inputModeContainer').style.display = 'none';
+                }
+                
+                resetAndStart();
             } catch (err) {
                 showToast('CSV 解析失败：' + err.message);
             }

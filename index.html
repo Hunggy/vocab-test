@@ -29,6 +29,7 @@
                 <option value="0">英文选中文</option>
                 <option value="1">中文选英文</option>
                 <option value="2">句子填空</option>
+                <option value="3">🔊 听音拼写</option>
             </select>
         </span>
     </div>
@@ -76,6 +77,11 @@
         <button class="option-btn" data-index="1">-</button>
         <button class="option-btn" data-index="2">-</button>
         <button class="option-btn" data-index="3">-</button>
+    </div>
+    <div class="input-mode-container" id="inputModeContainer" style="display:none;">
+        <input type="text" id="answerInput" placeholder="输入答案..." style="width:100%; max-width:300px; padding:12px 16px; border-radius:8px; border:2px solid var(--border); background:var(--btn-bg); color:var(--fg); font-size:18px; text-align:center; margin-bottom:12px;">
+        <button id="btnSubmitAnswer" style="background:var(--accent); color:#fff; border:none; padding:10px 30px; border-radius:8px; cursor:pointer; font-size:16px;">提交答案</button>
+        <div id="inputFeedback" style="margin-top:12px; min-height:24px; text-align:center;"></div>
     </div>
     <div class="browse-container" id="browseContainer">
         <div class="browse-header">
