@@ -760,6 +760,8 @@ function initApp() {
 
     function nextQuestion() {
         if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; }
+        document.getElementById('exampleDisplay').textContent = '';
+        document.getElementById('exampleCnDisplay').textContent = '';
         const avail = getAvailableWords();
         if (!avail.length) { 
             showModalConfirm('⚠️ 没有可用单词', '当前选择的范围没有单词，请选择其他日期范围。', () => { closeModal(); }, '确定');
