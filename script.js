@@ -1024,6 +1024,7 @@ function initApp() {
                 if (k === '3') { e.preventDefault(); selectOption(2); }
                 if (k === '4') { e.preventDefault(); selectOption(3); }
                 if (k === 'Escape') { e.preventDefault(); exitSpeedMode(); return; }
+                if ((k === 'v' || k === 'V') && currentWord) { e.preventDefault(); speak(currentWord.word); return; }
                 return;
             }
             const k = e.key;
@@ -1035,6 +1036,7 @@ function initApp() {
             if (k === 'ArrowLeft') { e.preventDefault(); showPreviousQuestion(); }
             if (k === 'ArrowRight') { e.preventDefault(); returnToCurrentQuestion(); }
             if ((k === 'a' || k === 'A') && !isViewingHistory && currentWordIndex !== null) { e.preventDefault(); toggleHardWord(); }
+            if ((k === 'v' || k === 'V') && currentWord) { e.preventDefault(); speak(currentWord.word); }
             if ((k === 's' || k === 'S') && !isViewingHistory && currentWordIndex !== null) { e.preventDefault(); slashWord(); }
         });
         document.getElementById('btnSpeedMode').addEventListener('click', startSpeedMode);
@@ -1059,7 +1061,7 @@ function initApp() {
             document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
         });
         document.getElementById('btnHelp').addEventListener('click', () => {
-            document.getElementById('modalDialog').innerHTML = `<h3>快捷键</h3><div style="line-height:2"><p>1-4: 选答案</p><p>Enter/空格: 下一题</p><p>←/→: 历史回顾</p><p>A: 难词 S: 斩词</p><p>📖 浏览: 点击按钮/Esc退出</p></div><button id="modalCloseBtn">关闭</button>`;
+            document.getElementById('modalDialog').innerHTML = `<h3>快捷键</h3><div style="line-height:2"><p>1-4: 选答案</p><p>Enter/空格: 下一题</p><p>←/→: 历史回顾</p><p>A: 难词 S: 斩词</p><p>V: 播放发音</p><p>📖 浏览: 点击按钮/Esc退出</p></div><button id="modalCloseBtn">关闭</button>`;
             document.getElementById('modalOverlay').classList.add('active');
             document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
         });
