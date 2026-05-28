@@ -1291,7 +1291,7 @@ function initApp() {
                 
                 showToast(`成功导入 ${customWords.length} 个自定义词汇`);
                 
-                updateVocabMapping();
+                vocabulary.forEach((v, i) => { v._idx = i; });
                 saveProgress();
             } catch (err) {
                 showToast('CSV 解析失败：' + err.message);
