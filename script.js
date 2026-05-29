@@ -461,6 +461,7 @@ function initApp() {
         currentWord = vocabulary[idx];
         isAnswering = true;
         hasMistake = false;
+        document.getElementById('exampleCnDisplay').textContent = '';
 
         if (testDirection === 0) {
             document.getElementById('wordDisplay').textContent = currentWord.word;
