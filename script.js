@@ -1323,7 +1323,15 @@ function initApp() {
 }
 
 loadVocabulary().then(() => {
-    document.addEventListener('DOMContentLoaded', initApp);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+        initApp();
+    }
 }).catch(() => {
-    document.addEventListener('DOMContentLoaded', initApp);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+        initApp();
+    }
 });
