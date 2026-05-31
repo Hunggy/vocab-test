@@ -841,6 +841,8 @@ function initApp() {
                 example = example.replaceAll(r.word, '____');
             });
             document.getElementById('wordDisplay').textContent = example;
+        } else if (s.td === 3 && s.w) {
+            document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
         } else {
             document.getElementById('wordDisplay').textContent = '';
         }
