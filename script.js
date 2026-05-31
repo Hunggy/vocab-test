@@ -798,7 +798,7 @@ function initApp() {
         };
         isViewingHistory = true;
         const p = history[history.length - 1];
-        document.getElementById('wordDisplay').textContent = p.dir === 0 ? p.word : (p.dir === 1 ? p.chinese : (p.blank || p.example));
+        document.getElementById('wordDisplay').textContent = p.dir === 0 ? p.word : (p.dir === 1 ? p.chinese : (p.dir === 3 ? p.word : (p.blank || p.example)));
         document.getElementById('exampleDisplay').textContent = p.dir === 0 ? p.example : '';
         if (p.dir === 0 || p.dir === 2) {
             document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(p.example_cn || '', p.chinese || '');
@@ -849,6 +849,15 @@ function initApp() {
         updateDirectionUI();
         document.getElementById('btnHardWord').textContent = currentWordIndex !== null && hardWords.has(currentWordIndex) ? '★' : '⭐';
         $$('.option-btn').forEach((b, i) => { b.textContent = s.bs[i].t; b.className = s.bs[i].c; b.disabled = s.bs[i].d; });
+        if (s.td === 3) {
+            document.getElementById('optionsGrid').style.display = 'none';
+            document.getElementById('inputModeContainer').style.display = 'flex';
+            document.getElementById('inputModeContainer').style.flexDirection = 'column';
+            document.getElementById('inputModeContainer').style.alignItems = 'center';
+        } else {
+            document.getElementById('optionsGrid').style.display = 'grid';
+            document.getElementById('inputModeContainer').style.display = 'none';
+        }
         isViewingHistory = false; savedCurrentState = null;
         document.getElementById('btnReturn').disabled = true;
         document.getElementById('btnPrev').disabled = history.length === 0;
@@ -1059,9 +1068,9 @@ function initApp() {
         document.getElementById('btnBrowse').addEventListener('click', () => showBrowseMode());
         document.getElementById('browseSearch').oninput = (e) => showBrowseMode(e.target.value);
         document.getElementById('btnBackToTest').addEventListener('click', hideBrowseMode);
-        document.getElementById('dateSelect').addEventListener('change', function () { selectedDate = this.value; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
-        document.getElementById('modeSelect').addEventListener('change', function () { testMode = parseInt(this.value); history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
-        document.getElementById('directionSelect').addEventListener('change', function () { testDirection = parseInt(this.value); updateDirectionUI(); history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
+        document.getElementById('dateSelect').addEventListener('change', function () { selectedDate = this.value; isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
+        document.getElementById('modeSelect').addEventListener('change', function () { testMode = parseInt(this.value); isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
+        document.getElementById('directionSelect').addEventListener('change', function () { testDirection = parseInt(this.value); updateDirectionUI(); isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
     }
 
     function showToast(msg) {
