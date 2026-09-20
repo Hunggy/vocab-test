@@ -79,6 +79,10 @@ function initApp() {
     let speedCorrect = 0;
     let speedAttempts = 0;
     let speedMistakes = [];
+    let speedHistory = [];          // 速通已答题记录，供 ← 回看
+    let speedPrevPos = -1;          // 当前回看的是 speedHistory 的第几题，-1 表示不在回看
+    let speedPrevSavedState = null; // 进入回看前的现场快照
+    let speedPendingNext = false;   // 进入回看时是否正等着自动跳下一题
 
     function init() {
         loadProgress();
@@ -196,6 +200,10 @@ function initApp() {
         speedCorrect = 0;
         speedAttempts = 0;
         speedMistakes = [];
+        speedHistory = [];
+        speedPrevPos = -1;
+        speedPrevSavedState = null;
+        speedPendingNext = false;
 
         document.getElementById('topActions').style.display = 'none';
         document.getElementById('btnHardWord').style.display = 'none';
@@ -203,11 +211,14 @@ function initApp() {
         document.getElementById('modeSelect').disabled = true;
         document.getElementById('directionSelect').disabled = true;
         document.getElementById('btnSpeedMode').disabled = true;
-        document.getElementById('btnBrowse').disabled = true;
+        document.getElementById('btnBrowse').disabled = false; // 速通中也能查单词
         document.getElementById('btnWrongBook').disabled = true;
-        document.getElementById('navBtns').style.display = 'none';
+        // 速通中保留上一题/返回按钮，方便回看刚答过的单词
+        document.getElementById('navBtns').style.display = '';
+        document.getElementById('btnPrev').disabled = true;
+        document.getElementById('btnReturn').disabled = true;
         document.getElementById('titleLabel').textContent = '⚡ 速通模式';
-        document.getElementById('shortcutHint').textContent = '速通中：1-4 选答案，答完自动下一题，全部完成后显示统计';
+        document.getElementById('shortcutHint').textContent = '速通中：1-4 选答案，答完自动下一题 | ← 看上一题 | → 返回 | 📖 可随时浏览单词';
         document.getElementById('progressFill').style.width = '0%';
         document.getElementById('btnSpeedMode').style.display = 'none';
         document.getElementById('btnExitSpeed').style.display = '';
@@ -219,6 +230,9 @@ function initApp() {
             finishSpeedMode();
             return;
         }
+        speedPrevPos = -1;
+        speedPrevSavedState = null;
+        speedPendingNext = false;
         const idx = speedList[speedIndex];
         currentWordIndex = idx;
         currentWord = vocabulary[idx];
@@ -290,10 +304,12 @@ function initApp() {
         document.getElementById('scoreLabel').textContent = `进度: ${speedIndex + 1}/${speedList.length}`;
         document.getElementById('remainingLabel').textContent = `正确: ${speedCorrect}`;
         document.getElementById('accuracyLabel').textContent = `正确率: ${speedAttempts ? Math.round(speedCorrect / speedAttempts * 100) : 0}%`;
+        document.getElementById('btnPrev').disabled = speedHistory.length === 0;
+        document.getElementById('btnReturn').disabled = true;
     }
 
     function speedSelectOption(i) {
-        if (!isSpeedMode || !isAnswering) return;
+        if (!isSpeedMode || !isAnswering || speedPrevPos !== -1) return;
         if (testDirection === 3) {
             speedSubmitInput();
             return;
@@ -326,6 +342,11 @@ function initApp() {
             }
         }
         $$('.option-btn').forEach(b => b.disabled = true);
+        speedHistory.push({
+            idx: currentWordIndex, dir: testDirection, opts: [...currentOptions],
+            correct: correctIndex, chosen: i, ok: i === correctIndex, typed: null
+        });
+        document.getElementById('btnPrev').disabled = false;
         document.getElementById('remainingLabel').textContent = `正确: ${speedCorrect}`;
         document.getElementById('accuracyLabel').textContent = `正确率: ${Math.round(speedCorrect / speedAttempts * 100)}%`;
         speedIndex++;
@@ -333,7 +354,7 @@ function initApp() {
     }
 
     function speedSubmitInput() {
-        if (!isSpeedMode || !isAnswering) return;
+        if (!isSpeedMode || !isAnswering || speedPrevPos !== -1) return;
         if (!currentWord) return;
         
         const input = document.getElementById('answerInput');
@@ -360,10 +381,143 @@ function initApp() {
             speedMistakes.push(currentWordIndex);
         }
         
+        speedHistory.push({
+            idx: currentWordIndex, dir: testDirection, opts: [], correct: -1,
+            chosen: -1, ok: userAnswer.toLowerCase() === currentWord.word.toLowerCase(), typed: userAnswer
+        });
+        document.getElementById('btnPrev').disabled = false;
         document.getElementById('remainingLabel').textContent = `正确: ${speedCorrect}`;
         document.getElementById('accuracyLabel').textContent = `正确率: ${Math.round(speedCorrect / speedAttempts * 100)}%`;
         speedIndex++;
         nextTimeout = setTimeout(showSpeedQuestion, 1000);
+    }
+
+    // ========== 速通模式：回看上一题 ==========
+    function captureSpeedScene() {
+        const inp = document.getElementById('answerInput');
+        const fb = document.getElementById('inputFeedback');
+        return {
+            word: document.getElementById('wordDisplay').textContent,
+            example: document.getElementById('exampleDisplay').textContent,
+            exampleCn: document.getElementById('exampleCnDisplay').innerHTML,
+            stageHint: document.getElementById('stageHint').textContent,
+            bs: [...$$('.option-btn')].map(b => ({ t: b.textContent, d: b.disabled, c: b.className })),
+            gridDisplay: document.getElementById('optionsGrid').style.display,
+            inputDisplay: document.getElementById('inputModeContainer').style.display,
+            inputValue: inp.value,
+            inputDisabled: inp.disabled,
+            submitDisabled: document.getElementById('btnSubmitAnswer').disabled,
+            feedback: fb.textContent,
+            feedbackColor: fb.style.color,
+            ia: isAnswering
+        };
+    }
+
+    function renderSpeedPrev() {
+        const rec = speedHistory[speedPrevPos];
+        if (!rec) return;
+        const w = vocabulary[rec.idx];
+        const dir = rec.dir;
+
+        if (dir === 0) {
+            document.getElementById('wordDisplay').textContent = w.word;
+            let ex = w.example || '';
+            if (w.synonym && ex && !ex.includes(w.word) && ex.includes(w.synonym)) ex = ex.replace(w.synonym, w.word);
+            document.getElementById('exampleDisplay').textContent = ex;
+            document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(w.example_cn || '', w.chinese || '');
+        } else if (dir === 1) {
+            document.getElementById('wordDisplay').textContent = w.chinese;
+            document.getElementById('exampleDisplay').textContent = w.example || '';
+            document.getElementById('exampleCnDisplay').textContent = `正确答案：${w.word}`;
+        } else if (dir === 3) {
+            document.getElementById('wordDisplay').textContent = w.word;
+            document.getElementById('exampleDisplay').textContent = w.example || '';
+            document.getElementById('exampleCnDisplay').textContent = w.example_cn || '';
+        } else {
+            let ex = w.example || '';
+            const reps = [];
+            if (w.synonym && ex.includes(w.synonym)) reps.push({ word: w.synonym, len: w.synonym.length });
+            if (ex.includes(w.word)) reps.push({ word: w.word, len: w.word.length });
+            reps.sort((a, b) => b.len - a.len);
+            reps.forEach(r => { ex = ex.replaceAll(r.word, '____'); });
+            document.getElementById('wordDisplay').textContent = ex;
+            document.getElementById('exampleDisplay').textContent = '';
+            document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(w.example_cn || '', w.chinese || '');
+        }
+
+        if (dir === 3) {
+            document.getElementById('optionsGrid').style.display = 'none';
+            document.getElementById('inputModeContainer').style.display = 'none';
+        } else {
+            document.getElementById('optionsGrid').style.display = 'grid';
+            document.getElementById('inputModeContainer').style.display = 'none';
+            $$('.option-btn').forEach((b, i) => {
+                b.textContent = rec.opts[i] || '-';
+                b.className = 'option-btn';
+                b.disabled = true;
+                if (i === rec.correct) b.classList.add('correct');
+                else if (i === rec.chosen) b.classList.add('wrong');
+            });
+        }
+
+        const resultText = rec.ok ? '✓ 答对' : (rec.typed ? `✗ 你输入：${rec.typed}` : '✗ 答错');
+        document.getElementById('stageHint').textContent = `👀 回顾第 ${speedPrevPos + 1} 题（${resultText}） · ← 更早 / → 返回`;
+        document.getElementById('btnPrev').disabled = speedPrevPos <= 0;
+        document.getElementById('btnReturn').disabled = false;
+    }
+
+    function showSpeedPrevious() {
+        if (!isSpeedMode) return;
+        if (!speedHistory.length) { showToast('还没有答过的题目'); return; }
+        if (speedPrevPos === -1) {
+            speedPrevSavedState = captureSpeedScene();
+            speedPendingNext = !!nextTimeout;
+            if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; }
+            speedPrevPos = speedHistory.length - 1;
+        } else if (speedPrevPos > 0) {
+            speedPrevPos--;
+        } else {
+            showToast('已经是第一题');
+            return;
+        }
+        isAnswering = false;
+        renderSpeedPrev();
+    }
+
+    function restoreSpeedScene() {
+        const s = speedPrevSavedState;
+        speedPrevPos = -1;
+        speedPrevSavedState = null;
+        if (!s) return;
+        isAnswering = s.ia;
+        document.getElementById('wordDisplay').textContent = s.word;
+        document.getElementById('exampleDisplay').textContent = s.example;
+        document.getElementById('exampleCnDisplay').innerHTML = s.exampleCn;
+        document.getElementById('stageHint').textContent = s.stageHint;
+        document.getElementById('optionsGrid').style.display = s.gridDisplay;
+        document.getElementById('inputModeContainer').style.display = s.inputDisplay;
+        const inp = document.getElementById('answerInput');
+        inp.value = s.inputValue;
+        inp.disabled = s.inputDisabled;
+        document.getElementById('btnSubmitAnswer').disabled = s.submitDisabled;
+        const fb = document.getElementById('inputFeedback');
+        fb.textContent = s.feedback;
+        fb.style.color = s.feedbackColor;
+        $$('.option-btn').forEach((b, i) => {
+            if (s.bs[i]) { b.textContent = s.bs[i].t; b.className = s.bs[i].c; b.disabled = s.bs[i].d; }
+        });
+        document.getElementById('btnPrev').disabled = speedHistory.length === 0;
+        document.getElementById('btnReturn').disabled = true;
+        if (speedPendingNext) {
+            speedPendingNext = false;
+            nextTimeout = setTimeout(showSpeedQuestion, 700);
+        }
+    }
+
+    function returnFromSpeedPrevious() {
+        if (!isSpeedMode || speedPrevPos === -1) return;
+        if (speedPrevPos < speedHistory.length - 1) { speedPrevPos++; renderSpeedPrev(); return; }
+        restoreSpeedScene();
     }
 
     function finishSpeedMode() {
@@ -418,6 +572,14 @@ function initApp() {
         isSpeedMode = false;
         speedList = [];
         speedIndex = 0;
+        // 清理回看状态：正在回看时直接丢弃快照，界面随后会被普通模式重建
+        if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; }
+        speedHistory = [];
+        speedPrevPos = -1;
+        speedPrevSavedState = null;
+        speedPendingNext = false;
+        isAnswering = true;
+        if (isBrowseMode) hideBrowseMode(); // 正在浏览时退出速通，先回到测试界面
 
         document.getElementById('topActions').style.display = '';
         document.getElementById('btnHardWord').style.display = '';
@@ -428,6 +590,8 @@ function initApp() {
         document.getElementById('btnBrowse').disabled = false;
         document.getElementById('btnWrongBook').disabled = false;
         document.getElementById('navBtns').style.display = '';
+        document.getElementById('btnPrev').disabled = history.length === 0;
+        document.getElementById('btnReturn').disabled = true;
         document.getElementById('titleLabel').textContent = '📝 单词测试';
         document.getElementById('shortcutHint').textContent = '快捷键: 1-4选答案 | Enter/空格 下一题 | ←上一题 | →返回 | A收藏 | S斩';
         document.getElementById('btnSpeedMode').style.display = '';
@@ -786,7 +950,7 @@ function initApp() {
     }
 
     function showPreviousQuestion() {
-        if (isSpeedMode) return;
+        if (isSpeedMode) { showSpeedPrevious(); return; }
         if (!history.length || isViewingHistory || isBrowseMode) return;
         savedCurrentState = {
             wi: currentWordIndex, w: currentWord, opts: [...currentOptions], ci: correctIndex,
@@ -816,7 +980,7 @@ function initApp() {
     }
 
     function returnToCurrentQuestion() {
-        if (isSpeedMode) return;
+        if (isSpeedMode) { returnFromSpeedPrevious(); return; }
         if (!isViewingHistory || !savedCurrentState) return;
         const s = savedCurrentState;
         currentWordIndex = s.wi; currentWord = s.w; currentOptions = s.opts; correctIndex = s.ci;
@@ -887,6 +1051,12 @@ function initApp() {
     }
 
     function showBrowseMode(searchTerm = '') {
+        // 速通中打开浏览：暂停自动跳题，返回测试时再继续
+        if (isSpeedMode && nextTimeout) {
+            clearTimeout(nextTimeout);
+            nextTimeout = null;
+            speedPendingNext = true;
+        }
         isBrowseMode = true;
         ['wordCard', 'optionsGrid', 'inputModeContainer', 'progressWrap', 'headerRow', 'bottomBar'].forEach(id => document.getElementById(id).style.display = 'none');
         document.getElementById('browseContainer').classList.add('active');
@@ -931,6 +1101,7 @@ function initApp() {
             btn.onclick = (e) => { e.stopPropagation(); speak(btn.dataset.word); };
         });
         document.getElementById('browseTitle').textContent = `📖 单词浏览 (${Object.keys(groups).length}组)`;
+        document.getElementById('btnBackToTest').textContent = isSpeedMode ? '返回速通' : '返回测试';
     }
 
     function hideBrowseMode() {
@@ -947,6 +1118,12 @@ function initApp() {
         } else {
             document.getElementById('optionsGrid').style.display = 'grid';
             document.getElementById('inputModeContainer').style.display = 'none';
+        }
+
+        // 速通中：从浏览回到测试，恢复被暂停的自动跳题（回看上一题时保持不动）
+        if (isSpeedMode && speedPrevPos === -1 && speedPendingNext) {
+            speedPendingNext = false;
+            nextTimeout = setTimeout(showSpeedQuestion, 700);
         }
     }
 
@@ -983,17 +1160,27 @@ function initApp() {
             // 检查是否在输入框中，如果是则跳过快捷键（除了Enter键用于提交）
             const activeElement = document.activeElement;
             const isInputFocused = activeElement && (activeElement.id === 'answerInput' || activeElement.id === 'browseSearch');
-            if (isInputFocused && e.key !== 'Enter') return;
+            const isArrowKey = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+            if (isInputFocused && e.key !== 'Enter' && !isArrowKey) return;
             
             if (isBrowseMode) { if (e.key === 'Escape') hideBrowseMode(); return; }
             if (isSpeedMode) {
                 const k = e.key;
+                if (k === 'ArrowLeft') { e.preventDefault(); showSpeedPrevious(); return; }
+                if (k === 'ArrowRight') { e.preventDefault(); returnFromSpeedPrevious(); return; }
+                if (k === 'Escape') { e.preventDefault(); exitSpeedMode(); return; }
+                if (k === 'v' || k === 'V') {
+                    e.preventDefault();
+                    const rec = speedPrevPos !== -1 ? speedHistory[speedPrevPos] : null;
+                    if (rec) speak(vocabulary[rec.idx].word);
+                    else if (currentWord) speak(currentWord.word);
+                    return;
+                }
+                if (speedPrevPos !== -1) return; // 回看上一题时不响应 1-4
                 if (k === '1') { e.preventDefault(); selectOption(0); }
                 if (k === '2') { e.preventDefault(); selectOption(1); }
                 if (k === '3') { e.preventDefault(); selectOption(2); }
                 if (k === '4') { e.preventDefault(); selectOption(3); }
-                if (k === 'Escape') { e.preventDefault(); exitSpeedMode(); return; }
-                if ((k === 'v' || k === 'V') && currentWord) { e.preventDefault(); speak(currentWord.word); return; }
                 return;
             }
             const k = e.key;
@@ -1030,7 +1217,7 @@ function initApp() {
             document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
         });
         document.getElementById('btnHelp').addEventListener('click', () => {
-            document.getElementById('modalDialog').innerHTML = `<h3>快捷键</h3><div style="line-height:2"><p>1-4: 选答案</p><p>Enter/空格: 下一题</p><p>←/→: 历史回顾</p><p>A: 难词 S: 斩词</p><p>V: 播放发音</p><p>📖 浏览: 点击按钮/Esc退出</p></div><button id="modalCloseBtn">关闭</button>`;
+            document.getElementById('modalDialog').innerHTML = `<h3>快捷键</h3><div style="line-height:2"><p>1-4: 选答案</p><p>Enter/空格: 下一题</p><p>←/→: 历史回顾（速通中可 ← 看上一题、→ 返回）</p><p>A: 难词 S: 斩词</p><p>V: 播放发音</p><p>📖 浏览: 点击按钮/Esc退出</p></div><button id="modalCloseBtn">关闭</button>`;
             document.getElementById('modalOverlay').classList.add('active');
             document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
         });
@@ -1042,7 +1229,9 @@ function initApp() {
             saveProgress();
         };
         document.getElementById('btnSpeak').onclick = () => {
-            if (isViewingHistory && history.length) {
+            if (isSpeedMode && speedPrevPos !== -1 && speedHistory[speedPrevPos]) {
+                speak(vocabulary[speedHistory[speedPrevPos].idx].word);
+            } else if (isViewingHistory && history.length) {
                 speak(history[history.length - 1].word);
             } else if (currentWord) {
                 speak(currentWord.word);
@@ -1069,7 +1258,10 @@ function initApp() {
         document.getElementById('btnReturn').addEventListener('click', returnToCurrentQuestion);
         document.getElementById('btnBrowse').addEventListener('click', () => showBrowseMode());
         document.getElementById('browseSearch').oninput = (e) => showBrowseMode(e.target.value);
-        document.getElementById('btnBackToTest').addEventListener('click', hideBrowseMode);
+        document.getElementById('btnBackToTest').addEventListener('click', () => {
+            hideBrowseMode();
+            document.getElementById('btnBackToTest').textContent = '返回测试';
+        });
         document.getElementById('dateSelect').addEventListener('change', function () { selectedDate = this.value; isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
         document.getElementById('modeSelect').addEventListener('change', function () { testMode = parseInt(this.value); isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
         document.getElementById('directionSelect').addEventListener('change', function () { testDirection = parseInt(this.value); updateDirectionUI(); isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
