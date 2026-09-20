@@ -239,6 +239,10 @@ function initApp() {
             finishSpeedMode();
             return;
         }
+        // 关键：必须清空 nextTimeout。否则它会一直留着上一次的 timer id，
+        // 导致之后在未作答的题上按 ← 回看时，被误判成「正等着跳下一题」，
+        // 返回后强行跳走、把当前正在做的题跳过。
+        if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; }
         // 若上一刻还在回看，进入新题前必须清掉回看的界面痕迹，
         // 否则「回顾…」提示会被当成普通提示存进快照，之后会卡在回看态出不来
         if (speedPrevPos !== -1) {
