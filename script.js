@@ -239,7 +239,13 @@ function initApp() {
             finishSpeedMode();
             return;
         }
-        speedPrevPos = -1;
+        // 若上一刻还在回看，进入新题前必须清掉回看的界面痕迹，
+        // 否则「回顾…」提示会被当成普通提示存进快照，之后会卡在回看态出不来
+        if (speedPrevPos !== -1) {
+            speedPrevPos = -1;
+            updateDirectionUI();
+            document.getElementById('btnReturn').disabled = true;
+        }
         speedPrevSavedState = null;
         speedPendingNext = false;
         const idx = speedList[speedIndex];
@@ -482,7 +488,12 @@ function initApp() {
             speedPrevSavedState = captureSpeedScene();
             speedPendingNext = !!nextTimeout;
             if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; }
-            speedPrevPos = speedHistory.length - 1;
+            // 屏幕上若还显示着刚答完的那道题（它已被记入 history），再看一遍没有意义，
+            // 直接翻到更早一道；否则（已跳到未作答的新题）从最近一道答过的题开始
+            const last = speedHistory[speedHistory.length - 1];
+            speedPrevPos = (last && last.idx === currentWordIndex && speedHistory.length > 1)
+                ? speedHistory.length - 2
+                : speedHistory.length - 1;
         } else if (speedPrevPos > 0) {
             speedPrevPos--;
         } else {
@@ -503,6 +514,7 @@ function initApp() {
         document.getElementById('exampleDisplay').textContent = s.example;
         document.getElementById('exampleCnDisplay').innerHTML = s.exampleCn;
         document.getElementById('stageHint').textContent = s.stageHint;
+        if (s.stageHint.includes('回顾')) updateDirectionUI(); // 快照异常时兜底，避免残留回看提示
         document.getElementById('optionsGrid').style.display = s.gridDisplay;
         document.getElementById('inputModeContainer').style.display = s.inputDisplay;
         const inp = document.getElementById('answerInput');
@@ -1266,6 +1278,8 @@ function initApp() {
             speedPendingNext = false;
             nextTimeout = setTimeout(showSpeedQuestion, 700);
         }
+        // 回看途中进过浏览：按题型重建的布局会把回看界面冲掉，这里重新渲染一次
+        if (isSpeedMode && speedPrevPos !== -1) renderSpeedPrev();
     }
 
     function updateScoreAndProgress() {
