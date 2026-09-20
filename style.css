@@ -173,3 +173,24 @@ body {
     background: #333; color: #fff; padding: 10px 22px; border-radius: 20px;
     font-size: var(--font-small); box-shadow: 0 4px 16px rgba(0,0,0,0.25);
 }
+/* ===== 翻卡自测模式 ===== */
+.word-card.card-flippable { cursor: pointer; }
+.word-card.card-flippable:hover { background: var(--btn-bg); }
+.word-card .card-face { animation: cardIn 0.22s ease; }
+@keyframes cardIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.card-actions { display: flex; gap: 12px; padding: 4px 0; }
+.card-btn {
+    flex: 1; font-size: var(--font-medium); font-weight: 700; padding: 16px 10px;
+    border-radius: var(--radius); border: 2px solid var(--border);
+    background: var(--btn-bg); color: var(--btn-fg); cursor: pointer;
+    transition: all 0.15s ease; min-height: 56px;
+}
+.card-btn:hover { transform: translateY(-1px); }
+.card-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.card-btn-wrong { color: var(--wrong-fg); border-color: #e74c3c; }
+.card-btn-wrong:hover:not(:disabled) { background: var(--wrong-bg); }
+.card-btn-right { color: var(--correct-fg); border-color: #4caf50; }
+.card-btn-right:hover:not(:disabled) { background: var(--correct-bg); }

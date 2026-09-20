@@ -84,6 +84,14 @@ function initApp() {
     let speedPrevSavedState = null; // 进入回看前的现场快照
     let speedPendingNext = false;   // 进入回看时是否正等着自动跳下一题
 
+    // 翻卡自测模式
+    let isCardMode = false;
+    let cardQueue = [];             // 待翻的单词 idx 队列
+    let cardIndex = 0;
+    let cardFlipped = false;
+    let cardKnown = 0, cardForgot = 0, cardTotal = 0;
+    let cardForgotList = [];
+
     function init() {
         loadProgress();
         applyFontSizes();
@@ -174,6 +182,7 @@ function initApp() {
     }
 
     function startSpeedMode() {
+        if (isCardMode) return;
         const avail = getAvailableWords();
         if (avail.length === 0) {
             showToast('当前范围内没有单词，无法速通');
@@ -543,6 +552,126 @@ function initApp() {
             };
         }
         exitSpeedMode();
+    }
+
+    // ========== 翻卡自测模式 ==========
+    function enterCardMode() {
+        const avail = getAvailableWords();
+        if (!avail.length) {
+            showModalConfirm('⚠️ 没有可用单词', '当前选择的范围没有单词，请选择其他日期范围。', () => { closeModal(); }, '确定');
+            return;
+        }
+        isCardMode = true;
+        document.getElementById('optionsGrid').style.display = 'none';
+        document.getElementById('inputModeContainer').style.display = 'none';
+        document.getElementById('cardActions').style.display = 'flex';
+        document.getElementById('wordCard').classList.add('card-flippable');
+        document.getElementById('btnSpeedMode').disabled = true;   // 翻卡下不提供速通
+        document.getElementById('directionSelect').disabled = true;
+        document.getElementById('titleLabel').textContent = '🃏 翻卡自测';
+        document.getElementById('shortcutHint').textContent = '空格/点击卡片翻面 | → 记住了 | ← 还没记住 | V 发音';
+        cardQueue = [...avail].sort(() => Math.random() - 0.5);
+        cardIndex = 0;
+        cardKnown = 0; cardForgot = 0; cardForgotList = [];
+        cardTotal = cardQueue.length;
+        cardFlipped = false;
+        showCard();
+    }
+
+    function exitCardMode() {
+        isCardMode = false;
+        cardFlipped = false;
+        document.getElementById('cardActions').style.display = 'none';
+        document.getElementById('wordCard').classList.remove('card-flippable');
+        document.getElementById('wordDisplay').classList.remove('card-face');
+        document.getElementById('btnSpeedMode').disabled = false;
+        document.getElementById('directionSelect').disabled = false;
+        document.getElementById('titleLabel').textContent = '📝 单词测试';
+        document.getElementById('shortcutHint').textContent = '快捷键: 1-4选答案 | Enter/空格 下一题 | ←上一题 | →返回 | A收藏 | S斩';
+    }
+
+    function showCard() {
+        if (cardIndex >= cardQueue.length) { finishCardMode(); return; }
+        currentWordIndex = cardQueue[cardIndex];
+        currentWord = vocabulary[currentWordIndex];
+        cardFlipped = false;
+        renderCard();
+        if (autoSpeak) speak(currentWord.word);
+        updateCardStats();
+    }
+
+    function renderCard() {
+        const w = currentWord;
+        const wd = document.getElementById('wordDisplay');
+        if (!cardFlipped) {
+            wd.textContent = w.word;
+            document.getElementById('exampleDisplay').textContent = w.example || '';
+            document.getElementById('exampleCnDisplay').textContent = '';
+            document.getElementById('stageHint').textContent = '👆 回想中文意思，点击卡片翻面';
+        } else {
+            wd.textContent = w.chinese;
+            document.getElementById('exampleDisplay').textContent = w.example || '';
+            document.getElementById('exampleCnDisplay').textContent = w.example_cn || '';
+            document.getElementById('stageHint').textContent = w.synonym ? `${w.word} = ${w.synonym}` : w.word;
+        }
+        wd.classList.remove('card-face');
+        void wd.offsetWidth; // 重启动画
+        wd.classList.add('card-face');
+        document.getElementById('btnCardKnown').disabled = !cardFlipped;
+        document.getElementById('btnCardForgot').disabled = !cardFlipped;
+    }
+
+    function flipCard() {
+        if (!isCardMode || cardFlipped) return;
+        cardFlipped = true;
+        renderCard();
+    }
+
+    function markCard(known) {
+        if (!isCardMode || !cardFlipped) return;
+        const idx = cardQueue[cardIndex];
+        cardQueue.splice(cardIndex, 1); // 当前卡出队，下一张自然补位（cardIndex 不变）
+        if (known) {
+            cardKnown++;
+        } else {
+            cardForgot++;
+            cardForgotList.push(idx);
+            wrongWords[String(idx)] = (wrongWords[String(idx)] || 0) + 1;
+            cardQueue.splice(Math.min(cardIndex + 5, cardQueue.length), 0, idx); // 5 张后再来一次
+        }
+        saveProgress();
+        if (cardIndex >= cardQueue.length) { finishCardMode(); return; }
+        showCard();
+    }
+
+    function updateCardStats() {
+        document.getElementById('scoreLabel').textContent = `记住: ${cardKnown}`;
+        document.getElementById('remainingLabel').textContent = `剩余: ${Math.max(cardQueue.length - cardIndex, 0)}`;
+        document.getElementById('accuracyLabel').textContent = `未记住: ${cardForgot}`;
+        document.getElementById('progressFill').style.width = cardTotal ? (cardKnown / cardTotal * 100) + '%' : '0%';
+    }
+
+    function finishCardMode() {
+        const forgotUnique = [...new Set(cardForgotList)];
+        showModal('翻卡完成', `
+            <p style="text-align:center; font-size:1.2em; margin-bottom:10px;">🎉 这一轮翻完了！</p>
+            <p style="text-align:center;">共 ${cardTotal} 张卡，记住 <span style="color:var(--progress-fill); font-weight:bold;">${cardKnown}</span> 个</p>
+            <p style="text-align:center;">标记未记住 <span style="color:var(--remaining-fg); font-weight:bold;">${forgotUnique.length}</span> 个（已计入错题统计）</p>
+            <div style="display:flex; gap:10px; justify-content:center; margin-top:18px; flex-wrap:wrap;">
+                <button class="close-btn" id="modalCloseBtn" style="margin:0;">确定</button>
+                ${forgotUnique.length ? `<button id="btnReviewCardForgot" style="background:var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">🔁 再翻一遍未记住的 (${forgotUnique.length})</button>` : ''}
+            </div>
+        `);
+        if (forgotUnique.length) {
+            document.getElementById('btnReviewCardForgot').onclick = () => {
+                closeModal();
+                cardQueue = [...forgotUnique].sort(() => Math.random() - 0.5);
+                cardIndex = 0; cardForgotList = []; cardKnown = 0; cardForgot = 0;
+                cardTotal = cardQueue.length;
+                showCard();
+                showToast(`已载入 ${cardQueue.length} 个未记住的单词`);
+            };
+        }
     }
 
     function startReviewingMistakes(mistakeIndices) {
@@ -1046,8 +1175,16 @@ function initApp() {
             reviewQueue = reviewQueue.filter(i => i.idx !== currentWordIndex);
             unmasteredIndices = unmasteredIndices.filter(i => i !== currentWordIndex);
             showToast('已斩掉！');
+            if (isCardMode) { removeFromCardQueue(currentWordIndex); showCard(); return; }
             nextQuestion();
         });
+    }
+
+    function removeFromCardQueue(idx) {
+        const pos = cardQueue.indexOf(idx);
+        if (pos === -1) return;
+        cardQueue.splice(pos, 1);
+        if (pos < cardIndex) cardIndex--;
     }
 
     function showBrowseMode(searchTerm = '') {
@@ -1058,7 +1195,7 @@ function initApp() {
             speedPendingNext = true;
         }
         isBrowseMode = true;
-        ['wordCard', 'optionsGrid', 'inputModeContainer', 'progressWrap', 'headerRow', 'bottomBar'].forEach(id => document.getElementById(id).style.display = 'none');
+        ['wordCard', 'optionsGrid', 'inputModeContainer', 'progressWrap', 'headerRow', 'bottomBar', 'cardActions'].forEach(id => document.getElementById(id).style.display = 'none');
         document.getElementById('browseContainer').classList.add('active');
         const idxs = getAvailableWords();
         if (!idxs.length) { document.getElementById('browseList').innerHTML = '<p>无单词</p>'; return; }
@@ -1115,6 +1252,10 @@ function initApp() {
             document.getElementById('inputModeContainer').style.display = 'flex';
             document.getElementById('inputModeContainer').style.flexDirection = 'column';
             document.getElementById('inputModeContainer').style.alignItems = 'center';
+        } else if (isCardMode) {
+            document.getElementById('optionsGrid').style.display = 'none';
+            document.getElementById('inputModeContainer').style.display = 'none';
+            document.getElementById('cardActions').style.display = 'flex';
         } else {
             document.getElementById('optionsGrid').style.display = 'grid';
             document.getElementById('inputModeContainer').style.display = 'none';
@@ -1149,6 +1290,8 @@ function initApp() {
         document.getElementById('btnReturn').disabled = true;
         currentWord = null; currentWordIndex = null;
         updateScoreAndProgress();
+        if (testMode === 5) { enterCardMode(); return; }
+        if (isCardMode) exitCardMode();
         nextQuestion();
     }
 
@@ -1164,6 +1307,16 @@ function initApp() {
             if (isInputFocused && e.key !== 'Enter' && !isArrowKey) return;
             
             if (isBrowseMode) { if (e.key === 'Escape') hideBrowseMode(); return; }
+            if (isCardMode) {
+                const k = e.key;
+                if (k === ' ' || k === 'Enter') { e.preventDefault(); flipCard(); return; }
+                if (k === 'ArrowRight') { e.preventDefault(); markCard(true); return; }
+                if (k === 'ArrowLeft') { e.preventDefault(); markCard(false); return; }
+                if (k === 'v' || k === 'V') { e.preventDefault(); if (currentWord) speak(currentWord.word); return; }
+                if ((k === 'a' || k === 'A') && currentWordIndex !== null) { e.preventDefault(); toggleHardWord(); return; }
+                if ((k === 's' || k === 'S') && currentWordIndex !== null) { e.preventDefault(); slashWord(); return; }
+                return;
+            }
             if (isSpeedMode) {
                 const k = e.key;
                 if (k === 'ArrowLeft') { e.preventDefault(); showSpeedPrevious(); return; }
@@ -1254,6 +1407,13 @@ function initApp() {
         });
         document.getElementById('btnHardWord').addEventListener('click', toggleHardWord);
         document.getElementById('btnSlashWord').addEventListener('click', slashWord);
+        document.getElementById('btnCardKnown').addEventListener('click', () => markCard(true));
+        document.getElementById('btnCardForgot').addEventListener('click', () => markCard(false));
+        document.getElementById('wordCard').addEventListener('click', (e) => {
+            if (!isCardMode) return;
+            if (e.target.closest('button')) return; // 点🔊/⭐/🔪 时不翻面
+            flipCard();
+        });
         document.getElementById('btnPrev').addEventListener('click', showPreviousQuestion);
         document.getElementById('btnReturn').addEventListener('click', returnToCurrentQuestion);
         document.getElementById('btnBrowse').addEventListener('click', () => showBrowseMode());
