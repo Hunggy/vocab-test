@@ -91,6 +91,9 @@ function initApp() {
     let cardFlipped = false;
     let cardKnown = 0, cardForgot = 0, cardTotal = 0;
     let cardForgotList = [];
+    let cardHistory = [];            // 已自评的卡 {idx, known}，供 ↑/← 回看
+    let cardPrevPos = -1;            // -1 表示不在回看
+    let cardSavedFlipped = false;    // 进入回看前当前卡的翻面状态
 
     function init() {
         loadProgress();
@@ -585,10 +588,14 @@ function initApp() {
         document.getElementById('btnSpeedMode').disabled = true;   // 翻卡下不提供速通
         document.getElementById('directionSelect').disabled = true;
         document.getElementById('titleLabel').textContent = '🃏 翻卡自测';
-        document.getElementById('shortcutHint').textContent = '空格/点击卡片翻面 | → 记住了 | ← 还没记住 | V 发音';
+        document.getElementById('shortcutHint').textContent = '空格/点击卡片翻面 | → 记住了 | ← 还没记住 | ↑ 回看上一张 | V 发音';
+        // 翻卡里 ←/→ 已被自评占用，回看改用 ↑ 进入，故按钮文案同步改成 ↑
+        document.getElementById('btnPrev').textContent = '上一张 (↑)';
+        document.getElementById('btnReturn').textContent = '返回 (→)';
         cardQueue = [...avail].sort(() => Math.random() - 0.5);
         cardIndex = 0;
         cardKnown = 0; cardForgot = 0; cardForgotList = [];
+        cardHistory = []; cardPrevPos = -1; cardSavedFlipped = false;
         cardTotal = cardQueue.length;
         cardFlipped = false;
         showCard();
@@ -604,9 +611,16 @@ function initApp() {
         document.getElementById('directionSelect').disabled = false;
         document.getElementById('titleLabel').textContent = '📝 单词测试';
         document.getElementById('shortcutHint').textContent = '快捷键: 1-4选答案 | Enter/空格 下一题 | ←上一题 | →返回 | A收藏 | S斩';
+        document.getElementById('btnPrev').textContent = '上一题 (←)';
+        document.getElementById('btnReturn').textContent = '返回 (→)';
+        document.getElementById('btnPrev').disabled = history.length === 0;
+        document.getElementById('btnReturn').disabled = true;
+        cardHistory = []; cardPrevPos = -1; cardSavedFlipped = false;
     }
 
     function showCard() {
+        // 任何进入新卡的路径都要先清掉回看态，否则会留下「界面在回看、状态已归位」的不一致
+        cardPrevPos = -1;
         if (cardIndex >= cardQueue.length) { finishCardMode(); return; }
         currentWordIndex = cardQueue[cardIndex];
         currentWord = vocabulary[currentWordIndex];
@@ -616,36 +630,89 @@ function initApp() {
         updateCardStats();
     }
 
-    function renderCard() {
+    function renderCard(hintOverride) {
         const w = currentWord;
         const wd = document.getElementById('wordDisplay');
+        let hint;
         if (!cardFlipped) {
             wd.textContent = w.word;
             document.getElementById('exampleDisplay').textContent = w.example || '';
             document.getElementById('exampleCnDisplay').textContent = '';
-            document.getElementById('stageHint').textContent = '👆 回想中文意思，点击卡片翻面';
+            hint = '👆 回想中文意思，点击卡片翻面';
         } else {
             wd.textContent = w.chinese;
             document.getElementById('exampleDisplay').textContent = w.example || '';
             document.getElementById('exampleCnDisplay').textContent = w.example_cn || '';
-            document.getElementById('stageHint').textContent = w.synonym ? `${w.word} = ${w.synonym}` : w.word;
+            hint = w.synonym ? `${w.word} = ${w.synonym}` : w.word;
+            // 翻到中文面之后才解锁「翻回英文」和自评，正面时两者都不可用
+            if (cardPrevPos === -1) hint += ' · 再点一次翻回英文';
         }
         wd.classList.remove('card-face');
         void wd.offsetWidth; // 重启动画
         wd.classList.add('card-face');
-        document.getElementById('btnCardKnown').disabled = !cardFlipped;
-        document.getElementById('btnCardForgot').disabled = !cardFlipped;
+        document.getElementById('stageHint').textContent = hintOverride || hint;
+        // 回看时禁止再自评，否则会重复计数
+        const reviewing = cardPrevPos !== -1;
+        document.getElementById('btnCardKnown').disabled = reviewing || !cardFlipped;
+        document.getElementById('btnCardForgot').disabled = reviewing || !cardFlipped;
+        const btnPrev = document.getElementById('btnPrev');
+        const btnReturn = document.getElementById('btnReturn');
+        btnPrev.disabled = reviewing ? cardPrevPos <= 0 : cardHistory.length === 0;
+        btnReturn.disabled = !reviewing;
     }
 
     function flipCard() {
-        if (!isCardMode || cardFlipped) return;
-        cardFlipped = true;
+        if (!isCardMode) return;
+        cardFlipped = !cardFlipped; // 双向：翻到中文后还能再翻回英文
+        // 回看中翻面必须走回看渲染，否则「回顾…」提示会被普通提示顶掉
+        if (cardPrevPos !== -1) renderCardPrev();
+        else renderCard();
+    }
+
+    // ========== 翻卡回看 ==========
+    function renderCardPrev() {
+        const rec = cardHistory[cardPrevPos];
+        currentWordIndex = rec.idx;
+        currentWord = vocabulary[rec.idx];
+        renderCard(`👀 回顾第 ${cardPrevPos + 1} 张（${rec.known ? '✓ 记住了' : '✗ 还没记住'}） · ↑/← 更早 / → 返回`);
+    }
+
+    function showCardPrevious() {
+        if (!isCardMode || !cardHistory.length) return;
+        if (cardPrevPos === -1) {
+            cardSavedFlipped = cardFlipped;
+            cardPrevPos = cardHistory.length - 1;
+        } else if (cardPrevPos > 0) {
+            cardPrevPos--;
+        } else {
+            return; // 已经是最早一张
+        }
+        cardFlipped = true; // 回看默认摊开中文面
+        renderCardPrev();
+    }
+
+    function returnFromCardPrevious() {
+        if (!isCardMode || cardPrevPos === -1) return;
+        if (cardPrevPos < cardHistory.length - 1) {
+            cardPrevPos++;
+            cardFlipped = true;
+            renderCardPrev();
+            return;
+        }
+        // 已回到最新一张，再按 → 退出回看、恢复当前卡
+        cardPrevPos = -1;
+        if (cardIndex >= cardQueue.length) { finishCardMode(); return; }
+        currentWordIndex = cardQueue[cardIndex];
+        currentWord = vocabulary[currentWordIndex];
+        cardFlipped = cardSavedFlipped;
         renderCard();
+        updateCardStats();
     }
 
     function markCard(known) {
-        if (!isCardMode || !cardFlipped) return;
+        if (!isCardMode || !cardFlipped || cardPrevPos !== -1) return;
         const idx = cardQueue[cardIndex];
+        cardHistory.push({ idx, known });
         cardQueue.splice(cardIndex, 1); // 当前卡出队，下一张自然补位（cardIndex 不变）
         if (known) {
             cardKnown++;
@@ -683,6 +750,7 @@ function initApp() {
                 closeModal();
                 cardQueue = [...forgotUnique].sort(() => Math.random() - 0.5);
                 cardIndex = 0; cardForgotList = []; cardKnown = 0; cardForgot = 0;
+                cardHistory = []; cardPrevPos = -1; cardSavedFlipped = false;
                 cardTotal = cardQueue.length;
                 showCard();
                 showToast(`已载入 ${cardQueue.length} 个未记住的单词`);
@@ -1095,6 +1163,7 @@ function initApp() {
     }
 
     function showPreviousQuestion() {
+        if (isCardMode) { showCardPrevious(); return; }
         if (isSpeedMode) { showSpeedPrevious(); return; }
         if (!history.length || isViewingHistory || isBrowseMode) return;
         savedCurrentState = {
@@ -1125,6 +1194,7 @@ function initApp() {
     }
 
     function returnToCurrentQuestion() {
+        if (isCardMode) { returnFromCardPrevious(); return; }
         if (isSpeedMode) { returnFromSpeedPrevious(); return; }
         if (!isViewingHistory || !savedCurrentState) return;
         const s = savedCurrentState;
@@ -1176,6 +1246,7 @@ function initApp() {
 
     function toggleHardWord() {
         if (currentWordIndex === null || isViewingHistory || isBrowseMode) return;
+        if (isCardMode && cardPrevPos !== -1) return; // 回看中标记的是历史卡，会标错词
         if (hardWords.has(currentWordIndex)) { hardWords.delete(currentWordIndex); showToast('已取消难词标记'); }
         else { hardWords.add(currentWordIndex); showToast('已标记为难词'); }
         document.getElementById('btnHardWord').textContent = hardWords.has(currentWordIndex) ? '★' : '⭐';
@@ -1184,6 +1255,7 @@ function initApp() {
 
     function slashWord() {
         if (currentWordIndex === null || isViewingHistory || isBrowseMode) return;
+        if (isCardMode && cardPrevPos !== -1) return; // 回看中 currentWordIndex 是历史卡，斩了没意义还会扰乱队列
         showModalConfirm('斩词确认', `确定要斩掉「${vocabulary[currentWordIndex].word}」吗？`, () => {
             closeModal();
             slashedWords.add(currentWordIndex);
@@ -1284,6 +1356,7 @@ function initApp() {
         }
         // 回看途中进过浏览：按题型重建的布局会把回看界面冲掉，这里重新渲染一次
         if (isSpeedMode && speedPrevPos !== -1) renderSpeedPrev();
+        if (isCardMode && cardPrevPos !== -1) renderCardPrev();
     }
 
     function updateScoreAndProgress() {
@@ -1328,11 +1401,13 @@ function initApp() {
             if (isCardMode) {
                 const k = e.key;
                 if (k === ' ' || k === 'Enter') { e.preventDefault(); flipCard(); return; }
-                if (k === 'ArrowRight') { e.preventDefault(); markCard(true); return; }
-                if (k === 'ArrowLeft') { e.preventDefault(); markCard(false); return; }
+                if (k === 'ArrowUp') { e.preventDefault(); showCardPrevious(); return; }
+                // 回看中 ←/→ 让位给导航，自评在回看时本来就是禁用的
+                if (k === 'ArrowRight') { e.preventDefault(); if (cardPrevPos !== -1) returnFromCardPrevious(); else markCard(true); return; }
+                if (k === 'ArrowLeft') { e.preventDefault(); if (cardPrevPos !== -1) showCardPrevious(); else markCard(false); return; }
                 if (k === 'v' || k === 'V') { e.preventDefault(); if (currentWord) speak(currentWord.word); return; }
-                if ((k === 'a' || k === 'A') && currentWordIndex !== null) { e.preventDefault(); toggleHardWord(); return; }
-                if ((k === 's' || k === 'S') && currentWordIndex !== null) { e.preventDefault(); slashWord(); return; }
+                if ((k === 'a' || k === 'A') && currentWordIndex !== null && cardPrevPos === -1) { e.preventDefault(); toggleHardWord(); return; }
+                if ((k === 's' || k === 'S') && currentWordIndex !== null && cardPrevPos === -1) { e.preventDefault(); slashWord(); return; }
                 return;
             }
             if (isSpeedMode) {
@@ -1388,7 +1463,7 @@ function initApp() {
             document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
         });
         document.getElementById('btnHelp').addEventListener('click', () => {
-            document.getElementById('modalDialog').innerHTML = `<h3>快捷键</h3><div style="line-height:2"><p>1-4: 选答案</p><p>Enter/空格: 下一题</p><p>←/→: 历史回顾（速通中可 ← 看上一题、→ 返回）</p><p>A: 难词 S: 斩词</p><p>V: 播放发音</p><p>📖 浏览: 点击按钮/Esc退出</p></div><button id="modalCloseBtn">关闭</button>`;
+            document.getElementById('modalDialog').innerHTML = `<h3>快捷键</h3><div style="line-height:2"><p>1-4: 选答案</p><p>Enter/空格: 下一题</p><p>←/→: 历史回顾（速通中可 ← 看上一题、→ 返回）</p><p>A: 难词 S: 斩词</p><p>V: 播放发音</p><p>🃏 翻卡: 空格/点击翻面（可翻回英文） | ←还没记住 | →记住了 | ↑回看上一张（回看中 ←更早 / →返回）</p><p>📖 浏览: 点击按钮/Esc退出</p></div><button id="modalCloseBtn">关闭</button>`;
             document.getElementById('modalOverlay').classList.add('active');
             document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
         });
