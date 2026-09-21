@@ -67,6 +67,8 @@ function initApp() {
     let masteredIndices = [], unmasteredIndices = [], wrongWords = {}, hardWords = new Set();
     let wrongQueue = [], reviewQueue = [], slashedWords = new Set();
     let questionCounter = 0, isReviewQuestion = false, history = [];
+    let historyPos = -1;             // 普通模式回看游标，-1 表示不在回看
+    let prevPendingNext = false;     // 进入回看时是否正等着自动跳下一题
     let testMode = 0, testDirection = 0, darkMode = false, selectedDate = '0509', autoSpeak = false;
     let hideExamples = false;        // 隐藏例句开关（只看单词，不给上下文提示）
     let fontSizes = { large: 26, medium: 15, small: 12 };
@@ -198,6 +200,7 @@ function initApp() {
 
     function startSpeedMode() {
         if (isCardMode) return;
+        if (historyPos !== -1) returnToCurrentQuestion(); // 回看中进速通会带走一份回看态快照，先退出
         const avail = getAvailableWords();
         if (avail.length === 0) {
             showToast('当前范围内没有单词，无法速通');
@@ -1000,7 +1003,7 @@ function initApp() {
         }
         currentWordIndex = nextIdx;
         currentWord = vocabulary[nextIdx];
-        hasMistake = false; isAnswering = true; isViewingHistory = false;
+        hasMistake = false; isAnswering = true; isViewingHistory = false; historyPos = -1; prevPendingNext = false;
         document.getElementById('btnReturn').disabled = true;
         document.getElementById('btnHardWord').textContent = hardWords.has(nextIdx) ? '★' : '⭐';
         if (testDirection === 0) {
@@ -1066,6 +1069,8 @@ function initApp() {
             $$('.option-btn').forEach((b, i) => { b.textContent = currentOptions[i] || '-'; b.className = 'option-btn'; b.disabled = false; });
         }
         if (autoSpeak && testDirection === 0) speak(currentWord.word);
+        // 出题时把提示复位：否则从回看态直接切模式/重开，会残留「👀 回顾第 N 题」
+        updateDirectionUI();
         updateScoreAndProgress();
         saveProgress();
     }
@@ -1177,17 +1182,34 @@ function initApp() {
     function showPreviousQuestion() {
         if (isCardMode) { showCardPrevious(); return; }
         if (isSpeedMode) { showSpeedPrevious(); return; }
-        if (!history.length || isViewingHistory || isBrowseMode) return;
-        savedCurrentState = {
-            wi: currentWordIndex, w: currentWord, opts: [...currentOptions], ci: correctIndex,
-            hm: hasMistake, ia: isAnswering,
-            bs: [...$$('.option-btn')].map(b => ({ t: b.textContent, d: b.disabled, c: b.className })),
-            ecn: currentWord ? currentWord.example_cn : '',
-            ecnd: document.getElementById('exampleCnDisplay').textContent || '',
-            td: testDirection, irq: isReviewQuestion
-        };
-        isViewingHistory = true;
-        const p = history[history.length - 1];
+        if (!history.length || isBrowseMode) return;
+        if (historyPos === -1) {
+            savedCurrentState = {
+                wi: currentWordIndex, w: currentWord, opts: [...currentOptions], ci: correctIndex,
+                hm: hasMistake, ia: isAnswering,
+                bs: [...$$('.option-btn')].map(b => ({ t: b.textContent, d: b.disabled, c: b.className })),
+                ecn: currentWord ? currentWord.example_cn : '',
+                ecnd: document.getElementById('exampleCnDisplay').textContent || '',
+                ecnHTML: document.getElementById('exampleCnDisplay').innerHTML || '',
+                td: testDirection, irq: isReviewQuestion
+            };
+            // 答完题有 800ms 自动跳题延时，回看期间必须暂停，否则会把回看界面冲掉
+            prevPendingNext = false;
+            if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; prevPendingNext = true; }
+            isViewingHistory = true;
+            historyPos = history.length - 1;
+        } else if (historyPos > 0) {
+            historyPos--;
+        } else {
+            return; // 已经是最早一题
+        }
+        renderHistoryPrev();
+    }
+
+    function renderHistoryPrev() {
+        const p = history[historyPos];
+        currentWordIndex = p.idx;
+        currentWord = vocabulary[p.idx];
         document.getElementById('wordDisplay').textContent = p.dir === 0 ? p.word : (p.dir === 1 ? p.chinese : (p.dir === 3 ? p.word : (p.blank || p.example)));
         document.getElementById('exampleDisplay').textContent = p.dir === 0 ? p.example : '';
         if (p.dir === 0 || p.dir === 2) {
@@ -1195,20 +1217,28 @@ function initApp() {
         } else {
             document.getElementById('exampleCnDisplay').textContent = p.example_cn || '';
         }
-        document.getElementById('stageHint').textContent = '上一题回顾：';
+        document.getElementById('stageHint').textContent = `👀 回顾第 ${historyPos + 1} 题 · ← 更早 / → 返回`;
         document.getElementById('btnHardWord').textContent = p.hard ? '★' : '⭐';
         $$('.option-btn').forEach((b, i) => {
             b.textContent = p.opts[i] || '-'; b.className = 'option-btn'; b.disabled = true;
             if (i === p.correct) b.classList.add('correct');
         });
-        document.getElementById('btnPrev').disabled = true;
+        document.getElementById('btnPrev').disabled = historyPos <= 0;
         document.getElementById('btnReturn').disabled = false;
     }
 
     function returnToCurrentQuestion() {
         if (isCardMode) { returnFromCardPrevious(); return; }
         if (isSpeedMode) { returnFromSpeedPrevious(); return; }
-        if (!isViewingHistory || !savedCurrentState) return;
+        if (historyPos === -1) return;
+        if (historyPos < history.length - 1) {
+            historyPos++;
+            renderHistoryPrev();
+            return;
+        }
+        // 已回到最新一题，再按 → 退出回看、恢复当前题
+        historyPos = -1;
+        if (!savedCurrentState) return;
         const s = savedCurrentState;
         currentWordIndex = s.wi; currentWord = s.w; currentOptions = s.opts; correctIndex = s.ci;
         hasMistake = s.hm; isAnswering = s.ia; testDirection = s.td; isReviewQuestion = s.irq;
@@ -1238,7 +1268,9 @@ function initApp() {
             document.getElementById('wordDisplay').textContent = '';
         }
         document.getElementById('exampleDisplay').textContent = s.td === 0 && s.w ? s.w.example : '';
-        document.getElementById('exampleCnDisplay').textContent = s.ecnd || '';
+        // 优先还原带高亮的 HTML，没有再退回纯文本
+        if (s.ecnHTML) document.getElementById('exampleCnDisplay').innerHTML = s.ecnHTML;
+        else document.getElementById('exampleCnDisplay').textContent = s.ecnd || '';
         updateDirectionUI();
         document.getElementById('btnHardWord').textContent = currentWordIndex !== null && hardWords.has(currentWordIndex) ? '★' : '⭐';
         $$('.option-btn').forEach((b, i) => { b.textContent = s.bs[i].t; b.className = s.bs[i].c; b.disabled = s.bs[i].d; });
@@ -1254,6 +1286,8 @@ function initApp() {
         isViewingHistory = false; savedCurrentState = null;
         document.getElementById('btnReturn').disabled = true;
         document.getElementById('btnPrev').disabled = history.length === 0;
+        // 回看前正等着跳下一题（答题后的 800ms 窗口）：现在补上，别把那一跳吞掉
+        if (prevPendingNext) { prevPendingNext = false; nextTimeout = setTimeout(nextQuestion, 700); }
     }
 
     function toggleHardWord() {
@@ -1389,6 +1423,7 @@ function initApp() {
         if (!preserveMastered) masteredIndices = [];
         unmasteredIndices = av.filter(i => !masteredIndices.includes(i));
         wrongQueue = []; reviewQueue = []; questionCounter = 0; history = [];
+        historyPos = -1; prevPendingNext = false;
         document.getElementById('btnPrev').disabled = true;
         document.getElementById('btnReturn').disabled = true;
         currentWord = null; currentWordIndex = null;
@@ -1495,8 +1530,8 @@ function initApp() {
         document.getElementById('btnSpeak').onclick = () => {
             if (isSpeedMode && speedPrevPos !== -1 && speedHistory[speedPrevPos]) {
                 speak(vocabulary[speedHistory[speedPrevPos].idx].word);
-            } else if (isViewingHistory && history.length) {
-                speak(history[history.length - 1].word);
+            } else if (isViewingHistory && historyPos !== -1) {
+                speak(history[historyPos].word);
             } else if (currentWord) {
                 speak(currentWord.word);
             }
@@ -1533,9 +1568,9 @@ function initApp() {
             hideBrowseMode();
             document.getElementById('btnBackToTest').textContent = '返回测试';
         });
-        document.getElementById('dateSelect').addEventListener('change', function () { selectedDate = this.value; isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
-        document.getElementById('modeSelect').addEventListener('change', function () { testMode = parseInt(this.value); isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
-        document.getElementById('directionSelect').addEventListener('change', function () { testDirection = parseInt(this.value); updateDirectionUI(); isViewingHistory = false; savedCurrentState = null; history = []; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
+        document.getElementById('dateSelect').addEventListener('change', function () { selectedDate = this.value; isViewingHistory = false; savedCurrentState = null; history = []; historyPos = -1; prevPendingNext = false; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
+        document.getElementById('modeSelect').addEventListener('change', function () { testMode = parseInt(this.value); isViewingHistory = false; savedCurrentState = null; history = []; historyPos = -1; prevPendingNext = false; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
+        document.getElementById('directionSelect').addEventListener('change', function () { testDirection = parseInt(this.value); updateDirectionUI(); isViewingHistory = false; savedCurrentState = null; history = []; historyPos = -1; prevPendingNext = false; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
     }
 
     function showToast(msg) {
