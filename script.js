@@ -68,6 +68,7 @@ function initApp() {
     let wrongQueue = [], reviewQueue = [], slashedWords = new Set();
     let questionCounter = 0, isReviewQuestion = false, history = [];
     let testMode = 0, testDirection = 0, darkMode = false, selectedDate = '0509', autoSpeak = false;
+    let hideExamples = false;        // 隐藏例句开关（只看单词，不给上下文提示）
     let fontSizes = { large: 26, medium: 15, small: 12 };
     let totalAttempts = 0, correctAttempts = 0, startTime = Date.now(), totalWords = 0;
     let nextTimeout = null, isBrowseMode = false;
@@ -106,6 +107,7 @@ function initApp() {
             document.body.classList.add('dark');
             document.getElementById('btnNightMode').textContent = '☀️';
         }
+        updateHideExamplesBtn();
         updateTime();
         setInterval(updateTime, 60000);
         bindEvents();
@@ -116,6 +118,16 @@ function initApp() {
         document.documentElement.style.setProperty('--font-large', fontSizes.large + 'px');
         document.documentElement.style.setProperty('--font-medium', fontSizes.medium + 'px');
         document.documentElement.style.setProperty('--font-small', fontSizes.small + 'px');
+    }
+
+    function updateHideExamplesBtn() {
+        const b = document.getElementById('btnHideExamples');
+        b.textContent = hideExamples ? '🚫 例句' : '📄 例句';
+        b.title = hideExamples ? '例句已隐藏，点击恢复显示' : '点击隐藏例句';
+        b.style.background = hideExamples ? 'var(--accent)' : '';
+        b.style.color = hideExamples ? '#fff' : '';
+        // 只作用于答题卡片；浏览模式是专门查词的，例句保留
+        document.getElementById('wordCard').classList.toggle('hide-examples', hideExamples);
     }
 
     function updateDirectionUI() {
@@ -1474,6 +1486,12 @@ function initApp() {
             document.getElementById('btnAutoSpeak').style.color = autoSpeak ? '#fff' : '';
             saveProgress();
         };
+        document.getElementById('btnHideExamples').onclick = () => {
+            hideExamples = !hideExamples;
+            updateHideExamplesBtn();
+            saveProgress();
+            showToast(hideExamples ? '例句已隐藏' : '例句已显示');
+        };
         document.getElementById('btnSpeak').onclick = () => {
             if (isSpeedMode && speedPrevPos !== -1 && speedHistory[speedPrevPos]) {
                 speak(vocabulary[speedHistory[speedPrevPos].idx].word);
@@ -1749,7 +1767,7 @@ function initApp() {
     }
 
     function saveProgress() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ masteredIndices, wrongWords, hardWords: [...hardWords], wrongQueue, reviewQueue, questionCounter, slashedWords: [...slashedWords], testMode, testDirection, darkMode, fontSizes, selectedDate, autoSpeak })); } catch (e) { }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ masteredIndices, wrongWords, hardWords: [...hardWords], wrongQueue, reviewQueue, questionCounter, slashedWords: [...slashedWords], testMode, testDirection, darkMode, fontSizes, selectedDate, autoSpeak, hideExamples })); } catch (e) { }
     }
 
     function loadProgress() {
@@ -1766,6 +1784,7 @@ function initApp() {
                 darkMode = d.darkMode ?? false; fontSizes = d.fontSizes || { large: 26, medium: 15, small: 12 };
                 selectedDate = d.selectedDate || '0509';
                 autoSpeak = d.autoSpeak ?? false;
+                hideExamples = d.hideExamples ?? false;
                 if (autoSpeak) {
                     document.getElementById('btnAutoSpeak').textContent = '🔊 On';
                     document.getElementById('btnAutoSpeak').style.background = 'var(--accent)';
