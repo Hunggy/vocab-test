@@ -822,7 +822,7 @@ function initApp() {
         document.getElementById('wordDisplay').classList.remove('card-face');
         document.getElementById('btnSpeedMode').disabled = false;
         document.getElementById('directionSelect').disabled = false;
-        document.getElementById('titleLabel').textContent = '📝 单词测试';
+        document.getElementById('titleLabel').textContent = '📝 词速 VocabSprint';
         document.getElementById('shortcutHint').textContent = '快捷键: 1-4选答案 | Enter/空格 下一题 | ←上一题 | →返回 | A收藏 | S斩';
         document.getElementById('btnPrev').textContent = '上一题 (←)';
         document.getElementById('btnReturn').textContent = '返回 (→)';
@@ -1018,7 +1018,7 @@ function initApp() {
         document.getElementById('navBtns').style.display = '';
         document.getElementById('btnPrev').disabled = history.length === 0;
         document.getElementById('btnReturn').disabled = true;
-        document.getElementById('titleLabel').textContent = '📝 单词测试';
+        document.getElementById('titleLabel').textContent = '📝 词速 VocabSprint';
         document.getElementById('shortcutHint').textContent = '快捷键: 1-4选答案 | Enter/空格 下一题 | ←上一题 | →返回 | A收藏 | S斩';
         document.getElementById('btnSpeedMode').style.display = '';
         document.getElementById('btnExitSpeed').style.display = 'none';

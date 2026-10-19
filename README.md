@@ -1,6 +1,6 @@
-# 📝 Vocab Test · 英语单词复习网页
+# ⚡ 词速 VocabSprint · 英语单词速通
 
-一个**零依赖、纯静态**的英语单词测验网页，托管在 GitHub Pages 上，手机和电脑打开即用。
+**词速 VocabSprint** 是一个**零依赖、纯静态**的英语单词速通网页，托管在 GitHub Pages 上，手机和电脑打开即用，可离线。
 
 > 🌐 在线地址：**https://hunggy.github.io/vocab-test/**
 > 仓库地址：https://github.com/Hunggy/vocab-test
@@ -96,9 +96,10 @@ npx serve .
 
 **发版注意：**
 
-- 改了 `script.js` / `style.css` / 图标后，记得把 `sw.js` 顶部的 `VERSION` 改一下（例如 `vocab-test-2026-10-19.2` → `vocab-test-2026-10-20.1`），否则旧缓存可能不会更新。
+- 改了 `script.js` / `style.css` / 图标后，记得把 `sw.js` 顶部的 `VERSION` 改一下（例如 `vocab-test-2026-10-19.3` → `vocab-test-2026-10-20.1`），否则旧缓存可能不会更新。
 - 只改 CSV / 词库时**不用**改 `VERSION`：`vocabulary.json` 走 network-first，联网刷新就会拿到新词；离线时回退缓存。
 - 离线缓存里的旧词库要更新，联网打开一次即可。
+- 图标由 `icons/source.png`（AI 生成后裁掉角落水印的成品图）经 `python tools/make_icons.py` 生成三个尺寸；改图标只需替换 `source.png` 后重跑脚本。
 
 ---
 
@@ -112,6 +113,7 @@ vocabulary.json            # 词库（由 CSV 生成，勿手改；网页唯一�
 manifest.webmanifest       # PWA 设置（名称、图标、主题色）
 sw.js                      # Service Worker（离线缓存；发版要改 VERSION）
 icons/icon-*.png           # 主屏幕图标（192 / 512 / maskable）
+icons/source.png           # 图标成品源图（make_icons.py 的输入）
 .nojekyll                  # 让 GitHub Pages 原样提供文件
 tools/build_vocabulary.py  # CSV → vocabulary.json 生成器
 build.bat / build.ps1      # 双击 build.bat 即可重建（自动找 Python）

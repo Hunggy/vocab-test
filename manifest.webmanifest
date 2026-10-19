@@ -1,7 +1,7 @@
 {
-  "name": "词汇测试 · 英语单词复习",
-  "short_name": "词汇测试",
-  "description": "英语单词复习：四种题型、速通、翻卡自测，离线可用。",
+  "name": "词速 · VocabSprint",
+  "short_name": "词速",
+  "description": "英语单词速通：四种题型、段次大测、离线可用。",
   "lang": "zh-CN",
   "start_url": "./index.html",
   "scope": "./",
