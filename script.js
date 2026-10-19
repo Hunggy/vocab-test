@@ -1,7 +1,7 @@
 const STORAGE_KEY = 'vocab_test_progress';
 
 let vocabulary = [];
-let batches = [];   // [{ key, label, deck, seg, exam, minId, maxId, cards }]，按 vocabulary.json 的 batches 元数据顺序
+let batches = [];   // [{ key, label, deck, seg, exam, cards }]，按 vocabulary.json 的 batches 元数据顺序
 
 async function loadVocabulary() {
     let data = null;
@@ -74,21 +74,12 @@ function buildBatchList(data) {
         const words = Array.isArray(data.groups[date]) ? data.groups[date] : [];
         if (!words.length) return; // 空分组跳过，不进入批次下拉框
         let cardCount = 0;
-        let minId = Infinity, maxId = -Infinity;
         words.forEach(word => {
             cardCount++;
             const synonym = typeof word.b === 'string' ? word.b.trim() : '';
             if (synonym) cardCount++;
-            if (typeof word.id === 'number' && !isNaN(word.id)) {
-                minId = Math.min(minId, word.id);
-                maxId = Math.max(maxId, word.id);
-            }
         });
-        stats[date] = {
-            minId: minId === Infinity ? 0 : minId,
-            maxId: maxId === -Infinity ? 0 : maxId,
-            cards: cardCount
-        };
+        stats[date] = { cards: cardCount };
     });
 
     const list = [];
@@ -102,8 +93,6 @@ function buildBatchList(data) {
                 deck: meta.deck || '未分類',
                 seg: Number.isInteger(meta.seg) ? meta.seg : null,
                 exam: Number.isInteger(meta.exam) ? meta.exam : null,
-                minId: s.minId,
-                maxId: s.maxId,
                 cards: s.cards
             });
         });
@@ -118,8 +107,6 @@ function buildBatchList(data) {
                 deck: '未分類',
                 seg: null,
                 exam: null,
-                minId: stats[key].minId,
-                maxId: stats[key].maxId,
                 cards: stats[key].cards
             });
         }
@@ -131,22 +118,15 @@ function buildBatchList(data) {
 // 批次键 → 下拉框标签：ISO 日期显示为 M月D日，其余用 label/key
 function formatBatchLabel(b) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b.key);
-    const range = ` (${b.minId}-${b.maxId})`;
-    if (m) return `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日${range}`;
-    return `${b.label || b.key}${range}`;
+    if (m) return `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日`;
+    return b.label || b.key;
 }
 
 // 生成层级下拉框的选项描述列表：[{ value, label, group }]
 // group 为 null 表示顶层选项，否则是 optgroup 的 deck 名（保持元数据 deck 顺序）
 function buildDateOptions(batchList) {
     const options = [];
-    if (batchList.length) {
-        const globalMin = Math.min(...batchList.map(b => b.minId));
-        const globalMax = Math.max(...batchList.map(b => b.maxId));
-        options.push({ value: 'all', label: `全部 (${globalMin}-${globalMax})`, group: null });
-    } else {
-        options.push({ value: 'all', label: '全部', group: null });
-    }
+    options.push({ value: 'all', label: '全部', group: null });
 
     const deckOrder = [];
     const byDeck = {};
@@ -158,11 +138,9 @@ function buildDateOptions(batchList) {
     deckOrder.forEach(deck => {
         const list = byDeck[deck];
         const enc = encodeURIComponent(deck);
-        const dMin = Math.min(...list.map(b => b.minId));
-        const dMax = Math.max(...list.map(b => b.maxId));
         const groupOptions = [];
         // deck 汇总
-        groupOptions.push({ value: `deck|${enc}`, label: `${deck}（全部） (${dMin}-${dMax})` });
+        groupOptions.push({ value: `deck|${enc}`, label: `${deck}（全部）` });
 
         // 有段/大測的批次 → 段汇总 + 大測汇总；没有的（旧班次）→ 逐项列出
         const withSeg = list.filter(b => b.seg !== null);
@@ -170,15 +148,10 @@ function buildDateOptions(batchList) {
 
         [...new Set(withSeg.map(b => b.seg))].sort((a, b) => a - b).forEach(seg => {
             const segList = withSeg.filter(b => b.seg === seg);
-            const sMin = Math.min(...segList.map(b => b.minId));
-            const sMax = Math.max(...segList.map(b => b.maxId));
-            groupOptions.push({ value: `seg|${enc}|${seg}`, label: `第${seg}段（全部） (${sMin}-${sMax})` });
+            groupOptions.push({ value: `seg|${enc}|${seg}`, label: `第${seg}段（全部）` });
 
             [...new Set(segList.map(b => b.exam).filter(e => e !== null))].sort((a, b) => a - b).forEach(exam => {
-                const exList = segList.filter(b => b.exam === exam);
-                const eMin = Math.min(...exList.map(b => b.minId));
-                const eMax = Math.max(...exList.map(b => b.maxId));
-                groupOptions.push({ value: `exam|${enc}|${seg}|${exam}`, label: `第${seg}段・第${exam}次大測 (${eMin}-${eMax})` });
+                groupOptions.push({ value: `exam|${enc}|${seg}|${exam}`, label: `第${seg}段・第${exam}次大測` });
             });
         });
 
@@ -219,6 +192,510 @@ function filterBySelection(selectedDate, vocab, batchList, legacyDateMapping) {
     }
     const targetDate = legacyDateMapping(selectedDate);
     return vocab.filter(v => v.date === targetDate);
+}
+
+// ---------------------------------------------------------------------------
+// 词汇范围树形菜单（自定义 popover；隐藏的 #dateSelect 仍是数据/语义桥梁）
+// 展示层只做：渲染树 + 选中叶子时写 sel.value 并派发 change。
+// 过滤、持久化、禁用等逻辑仍由既有 change 监听与 speed/card 流程处理。
+// ---------------------------------------------------------------------------
+
+// 过滤值覆盖的卡片数（单词 + 同义词卡），供菜单内徽章展示
+function batchCardsFor(value) {
+    if (value === 'all') return batches.reduce((s, b) => s + (b.cards || 0), 0);
+    if (value === 'custom') return null;
+    const keys = /^(deck|seg|exam)\|/.test(value) ? [...resolveBatchKeys(value, batches)] : [value];
+    return keys.reduce((s, k) => {
+        const b = batches.find(x => x.key === k);
+        return s + (b ? (b.cards || 0) : 0);
+    }, 0);
+}
+
+// 菜单树：第 1 层 自定义词汇 / 全部 / 各 deck；
+// deck 内 → deck（全部）+ 第n段 + 日期批次；段内 → 第n段（全部）+ 各大測
+function buildBatchMenuTree() {
+    const deckOrder = [];
+    const byDeck = {};
+    (batches || []).forEach(b => {
+        if (!byDeck[b.deck]) { byDeck[b.deck] = { enc: encodeURIComponent(b.deck), segs: [], dates: [] }; deckOrder.push(b.deck); }
+        const d = byDeck[b.deck];
+        if (b.seg != null) {
+            let s = d.segs.find(x => x.seg === b.seg);
+            if (!s) { s = { seg: b.seg, examNos: [] }; d.segs.push(s); }
+            if (b.exam != null && s.examNos.indexOf(b.exam) < 0) s.examNos.push(b.exam);
+        } else {
+            d.dates.push({ leaf: true, value: b.key, label: formatBatchLabel(b) });
+        }
+    });
+
+    const nodes = [
+        { leaf: true, value: 'custom', label: '自定义词汇' },
+        { leaf: true, value: 'all', label: '全部' }
+    ];
+    deckOrder.forEach(deck => {
+        const d = byDeck[deck];
+        const enc = d.enc;
+        const children = [{ leaf: true, value: `deck|${enc}`, label: `${deck}（全部）` }];
+        d.segs.sort((a, b) => a.seg - b.seg).forEach(s => {
+            const nos = s.examNos.sort((a, b) => a - b);
+            if (nos.length) {
+                // 段一层 → 段汇总 + 各大測（名称与旧下拉一致）
+                children.push({
+                    leaf: false, label: `第${s.seg}段`,
+                    children: [
+                        { leaf: true, value: `seg|${enc}|${s.seg}`, label: `第${s.seg}段（全部）` },
+                        ...nos.map(no => ({
+                            leaf: true,
+                            value: `exam|${enc}|${s.seg}|${no}`,
+                            label: `第${s.seg}段・第${no}次大測`
+                        }))
+                    ]
+                });
+            } else {
+                children.push({ leaf: true, value: `seg|${enc}|${s.seg}`, label: `第${s.seg}段（全部）` });
+            }
+        });
+        nodes.push({ leaf: false, label: deck, children: children.concat(d.dates) });
+    });
+    return nodes;
+}
+
+let batchMenuOpen = false;
+
+function batchMenuEls() {
+    return {
+        menu: document.getElementById('batchMenu'),
+        trigger: document.getElementById('batchTrigger'),
+        wrap: document.getElementById('batchSelectWrap'),
+        sel: document.getElementById('dateSelect')
+    };
+}
+
+function renderBatchMenu() {
+    const { menu, sel } = batchMenuEls();
+    if (!menu || !sel) return;
+    menu.innerHTML = '';
+    const flat = [];
+    const frag = document.createDocumentFragment();
+    const NS = 'http://www.w3.org/2000/svg';
+
+    const addItem = (node, parentEl) => {
+        if (node.leaf) {
+            const count = batchCardsFor(node.value);
+            const el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'batch-item is-leaf';
+            el.setAttribute('role', 'treeitem');
+            el.setAttribute('aria-selected', 'false');
+            el.tabIndex = -1;
+            el.dataset.value = node.value;
+            const text = document.createElement('span');
+            text.className = 'batch-text';
+            text.textContent = node.label;
+            el.appendChild(text);
+            if (count !== null) {
+                const c = document.createElement('span');
+                c.className = 'batch-count';
+                c.textContent = String(count);
+                el.appendChild(c);
+            }
+            parentEl.appendChild(el);
+            flat.push({ el, node });
+        } else {
+            const wrap = document.createElement('div');
+            wrap.className = 'batch-branch';
+            const head = document.createElement('button');
+            head.type = 'button';
+            head.className = 'batch-item is-branch';
+            head.setAttribute('role', 'treeitem');
+            head.setAttribute('aria-expanded', 'false');
+            head.tabIndex = -1;
+            const text = document.createElement('span');
+            text.className = 'batch-text';
+            text.textContent = node.label;
+            const chev = document.createElementNS(NS, 'svg');
+            chev.setAttribute('class', 'ic batch-chev');
+            chev.setAttribute('aria-hidden', 'true');
+            const use = document.createElementNS(NS, 'use');
+            use.setAttribute('href', '#icon-chevron');
+            chev.appendChild(use);
+            head.appendChild(text);
+            head.appendChild(chev);
+            const sub = document.createElement('div');
+            sub.className = 'batch-submenu';
+            sub.setAttribute('role', 'group');
+            sub.hidden = true;
+            wrap.appendChild(head);
+            wrap.appendChild(sub);
+            parentEl.appendChild(wrap);
+            flat.push({ el: head, node, sub });
+            node.children.forEach(c => addItem(c, sub));
+        }
+    };
+    buildBatchMenuTree().forEach(n => addItem(n, frag));
+    menu.appendChild(frag);
+    menu._flat = flat;
+    syncBatchMenu();
+}
+
+function syncBatchMenu() {
+    const { menu, sel } = batchMenuEls();
+    const labelEl = document.getElementById('batchTriggerLabel');
+    if (!menu || !sel) return;
+    const cur = sel.value;
+    const flat = menu._flat || [];
+    let hit = null;
+    flat.forEach(f => {
+        if (f.node.leaf) {
+            const on = f.node.value === cur;
+            f.el.classList.toggle('is-selected', on);
+            f.el.setAttribute('aria-selected', on ? 'true' : 'false');
+            if (on) hit = f;
+        } else {
+            f.sub.hidden = true;
+            f.el.setAttribute('aria-expanded', 'false');
+        }
+    });
+    // 自动展开当前选择所在的分支（其余折叠，保证打开时层级可预期）
+    let p = hit ? hit.el.parentElement.closest('.batch-branch') : null;
+    while (p) {
+        const head = p.querySelector('.batch-item.is-branch');
+        const sub = p.querySelector('.batch-submenu');
+        if (head && sub) { sub.hidden = false; head.setAttribute('aria-expanded', 'true'); }
+        p = p.parentElement.closest('.batch-branch');
+    }
+    // 触发按钮文案 = 祖先分支名 · 叶子名（顶层叶子无前缀；找不到时退化用 option 原文案）
+    let title = null;
+    if (hit) {
+        const chain = [];
+        let q = hit.el.parentElement.closest('.batch-branch');
+        while (q) {
+            const t = q.querySelector('.batch-item.is-branch .batch-text');
+            if (t) chain.unshift(t.textContent);
+            q = q.parentElement.closest('.batch-branch');
+        }
+        // 叶子名称已含父级前缀时（如「第1段（全部）」）不重复显示
+        if (chain.length && hit.node.label.indexOf(chain[chain.length - 1]) === 0) chain.pop();
+        title = (chain.length ? chain.join(' · ') + ' · ' : '') + hit.node.label;
+    }
+    if (!title) {
+        const o = sel.options[sel.selectedIndex];
+        title = o ? o.textContent : '全部';
+    }
+    if (labelEl) labelEl.textContent = title;
+    syncBatchDisabled();
+}
+
+// 处于展开分支内的项才算“可见”，供键盘 roving focus 遍历
+function visibleBatchItems() {
+    const menu = batchMenuEls().menu;
+    return (menu && menu._flat || []).filter(f => {
+        const sub = f.el.closest('.batch-submenu');
+        return !sub || !sub.hidden;
+    });
+}
+
+function batchFocus(item) {
+    if (!item) return;
+    // 键盘聚焦到隐藏叶子时把祖先分支展开
+    let sub = item.el.parentElement.closest('.batch-submenu');
+    while (sub && sub.hidden) {
+        sub.hidden = false;
+        const h = sub.parentElement.querySelector('.batch-item.is-branch');
+        if (h) h.setAttribute('aria-expanded', 'true');
+        sub = sub.parentElement.closest('.batch-submenu');
+    }
+    item.el.focus();
+}
+
+function setBatchMenuOpen(open, refocusTrigger) {
+    const { menu, trigger, wrap, sel } = batchMenuEls();
+    if (!menu || !trigger) return;
+    if (open && (sel.disabled || trigger.classList.contains('is-disabled'))) open = false;
+    // 两个弹层互斥：打开范围树时收起练习模式弹层（反之见 setModeMenuOpen）
+    if (open && modeMenuOpen) setModeMenuOpen(false, false);
+    batchMenuOpen = open;
+    menu.hidden = !open;
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (wrap) wrap.classList.toggle('open', open);
+    if (open) {
+        const items = visibleBatchItems();
+        let idx = items.findIndex(f => f.el.classList.contains('is-selected'));
+        if (idx < 0) idx = 0;
+        batchFocus(items[idx]);
+    } else if (refocusTrigger) {
+        trigger.focus();
+    }
+}
+
+function chooseBatch(node) {
+    const { sel } = batchMenuEls();
+    if (!sel || sel.disabled) return;
+    sel.value = node.value;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    setBatchMenuOpen(false, true);
+}
+
+function toggleBatchBranch(head, force) {
+    if (!head) return;
+    const sub = head.parentElement.querySelector('.batch-submenu');
+    if (!sub) return;
+    const open = force === undefined ? sub.hidden : force;
+    sub.hidden = !open;
+    head.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function syncBatchDisabled() {
+    const { menu, sel, trigger, wrap } = batchMenuEls();
+    const off = !!(sel && sel.disabled);
+    if (trigger) trigger.classList.toggle('is-disabled', off);
+    if (wrap) wrap.classList.toggle('is-disabled', off);
+    if (off && batchMenuOpen) setBatchMenuOpen(false, false);
+}
+
+function onBatchMenuKeydown(e) {
+    if (!batchMenuOpen) return;
+    const { menu } = batchMenuEls();
+    const items = visibleBatchItems();
+    if (!items.length) return;
+    const idx = items.findIndex(f => f.el === document.activeElement);
+    const cur = items[idx >= 0 ? idx : 0];
+    const move = d => {
+        e.preventDefault();
+        batchFocus(items[((idx < 0 ? 0 : idx + d) + items.length) % items.length]);
+    };
+    const isBranch = cur && !cur.node.leaf;
+    switch (e.key) {
+        case 'ArrowDown': move(1); break;
+        case 'ArrowUp': move(-1); break;
+        case 'Home': e.preventDefault(); batchFocus(items[0]); break;
+        case 'End': e.preventDefault(); batchFocus(items[items.length - 1]); break;
+        case 'ArrowRight':
+            if (isBranch) {
+                e.preventDefault();
+                toggleBatchBranch(cur.el, true);
+                const after = visibleBatchItems();
+                batchFocus(after[Math.min(after.length - 1, (idx < 0 ? 0 : idx) + 1)]);
+            }
+            break;
+        case 'ArrowLeft':
+            if (isBranch && cur.el.getAttribute('aria-expanded') === 'true') {
+                e.preventDefault();
+                toggleBatchBranch(cur.el, false);
+            } else {
+                const br = cur && cur.el.closest('.batch-branch');
+                if (br && br.querySelector('.batch-item.is-branch') !== cur.el) {
+                    e.preventDefault();
+                    const parentHead = br.querySelector('.batch-item.is-branch');
+                    toggleBatchBranch(parentHead, false);
+                    const f = (batchMenuEls().menu._flat || []).find(x => x.el === parentHead);
+                    batchFocus(f);
+                }
+            }
+            break;
+        case 'Enter':
+        case ' ':
+            e.preventDefault();
+            if (cur.node.leaf) chooseBatch(cur.node);
+            else toggleBatchBranch(cur.el);
+            break;
+        case 'Escape':
+            e.preventDefault();
+            setBatchMenuOpen(false, true);
+            break;
+    }
+}
+
+function initBatchMenu() {
+    const { menu, trigger, sel } = batchMenuEls();
+    if (!menu || !trigger) return;
+    renderBatchMenu();
+    trigger.addEventListener('click', e => { e.stopPropagation(); setBatchMenuOpen(!batchMenuOpen, false); });
+    trigger.addEventListener('keydown', e => {
+        if (!batchMenuOpen && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            setBatchMenuOpen(true, false);
+        }
+    });
+    menu.addEventListener('click', e => {
+        const head = e.target.closest('.batch-item.is-branch');
+        if (head) { toggleBatchBranch(head); return; }
+        const leaf = e.target.closest('.batch-item.is-leaf');
+        if (leaf) {
+            const f = (menu._flat || []).find(x => x.el === leaf);
+            if (f) chooseBatch(f.node);
+        }
+    });
+    menu.addEventListener('keydown', onBatchMenuKeydown);
+    menu.addEventListener('focusout', e => {
+        // 焦点移到触发按钮（整个 wrap 内）时不关闭，否则点击触发器会先被 focusout 关掉、再被 click 重新打开
+        const wrap = batchMenuEls().wrap;
+        if (batchMenuOpen && !(wrap && wrap.contains(e.relatedTarget))) setBatchMenuOpen(false, false);
+    });
+    document.addEventListener('click', e => {
+        if (!batchMenuOpen) return;
+        if (menu.contains(e.target) || trigger.contains(e.target)) return;
+        setBatchMenuOpen(false, false);
+    });
+    if (typeof MutationObserver !== 'undefined' && sel) {
+        // 速通/翻卡等模式下原生 select 的 disabled（反射属性）变化 → 同步按钮外观
+        new MutationObserver(syncBatchDisabled).observe(sel, { attributes: true, attributeFilter: ['disabled', 'hidden'] });
+    }
+    syncBatchMenu();
+}
+
+// ---------------------------------------------------------------------------
+// 练习模式菜单：与词汇范围树共用同一套触发按钮/卡片弹层视觉。
+// 隐藏的 #modeSelect 仍是数据/语义桥梁，菜单只做改 value + 派发 change。
+// ---------------------------------------------------------------------------
+
+let modeMenuOpen = false;
+
+function modeMenuEls() {
+    return {
+        menu: document.getElementById('modeMenu'),
+        trigger: document.getElementById('modeTrigger'),
+        wrap: document.getElementById('modeSelectWrap'),
+        sel: document.getElementById('modeSelect')
+    };
+}
+
+function renderModeMenu() {
+    const { menu, sel } = modeMenuEls();
+    if (!menu || !sel) return;
+    menu.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    [...sel.options].forEach(opt => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'batch-item is-leaf';
+        el.setAttribute('role', 'option');
+        el.setAttribute('aria-selected', 'false');
+        el.tabIndex = -1;
+        el.dataset.value = opt.value;
+        const text = document.createElement('span');
+        text.className = 'batch-text';
+        text.textContent = opt.textContent;
+        el.appendChild(text);
+        frag.appendChild(el);
+    });
+    menu.appendChild(frag);
+    menu._flat = [...menu.querySelectorAll('.batch-item')].map(el => ({ el, value: el.dataset.value }));
+    syncModeMenu();
+}
+
+function syncModeMenu() {
+    const { menu, sel } = modeMenuEls();
+    const labelEl = document.getElementById('modeTriggerLabel');
+    if (!menu || !sel) return;
+    const cur = sel.value;
+    (menu._flat || []).forEach(f => {
+        const on = f.value === cur;
+        f.el.classList.toggle('is-selected', on);
+        f.el.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const o = sel.options[sel.selectedIndex];
+    if (labelEl) labelEl.textContent = o ? o.textContent : '全部单词';
+    syncModeDisabled();
+}
+
+function setModeMenuOpen(open, refocusTrigger) {
+    const { menu, trigger, wrap, sel } = modeMenuEls();
+    if (!menu || !trigger) return;
+    if (open && (sel.disabled || trigger.classList.contains('is-disabled'))) open = false;
+    // 两个弹层互斥：打开练习模式时收起范围树（反之见 setBatchMenuOpen）
+    if (open && batchMenuOpen) setBatchMenuOpen(false, false);
+    modeMenuOpen = open;
+    menu.hidden = !open;
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (wrap) wrap.classList.toggle('open', open);
+    if (open) {
+        const flat = menu._flat || [];
+        const cur = flat.find(f => f.value === sel.value) || flat[0];
+        if (cur) cur.el.focus();
+    } else if (refocusTrigger) {
+        trigger.focus();
+    }
+}
+
+function chooseMode(value) {
+    const { sel } = modeMenuEls();
+    if (!sel || sel.disabled) return;
+    if (String(sel.value) !== String(value)) {
+        sel.value = value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    setModeMenuOpen(false, true);
+}
+
+function syncModeDisabled() {
+    const { sel, trigger, wrap } = modeMenuEls();
+    const off = !!(sel && sel.disabled);
+    if (trigger) trigger.classList.toggle('is-disabled', off);
+    if (wrap) wrap.classList.toggle('is-disabled', off);
+    if (off && modeMenuOpen) setModeMenuOpen(false, false);
+}
+
+function onModeMenuKeydown(e) {
+    if (!modeMenuOpen) return;
+    const { menu, sel } = modeMenuEls();
+    const flat = (menu && menu._flat) || [];
+    if (!flat.length) return;
+    const idx = flat.findIndex(f => f.el === document.activeElement);
+    const move = d => {
+        e.preventDefault();
+        const next = flat[((idx < 0 ? 0 : idx + d) + flat.length) % flat.length];
+        if (next) next.el.focus();
+    };
+    switch (e.key) {
+        case 'ArrowDown': move(1); break;
+        case 'ArrowUp': move(-1); break;
+        case 'Home': e.preventDefault(); flat[0].el.focus(); break;
+        case 'End': e.preventDefault(); flat[flat.length - 1].el.focus(); break;
+        case 'Enter':
+        case ' ': {
+            const cur = idx >= 0 ? flat[idx] : (flat.find(f => f.value === sel.value) || flat[0]);
+            e.preventDefault();
+            if (cur) chooseMode(cur.value);
+            break;
+        }
+        case 'Escape':
+            e.preventDefault();
+            setModeMenuOpen(false, true);
+            break;
+    }
+}
+
+function initModeMenu() {
+    const { menu, trigger, sel, wrap } = modeMenuEls();
+    if (!menu || !trigger) return;
+    renderModeMenu();
+    trigger.addEventListener('click', e => { e.stopPropagation(); setModeMenuOpen(!modeMenuOpen, false); });
+    trigger.addEventListener('keydown', e => {
+        if (!modeMenuOpen && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            setModeMenuOpen(true, false);
+        }
+    });
+    menu.addEventListener('click', e => {
+        const item = e.target.closest('.batch-item');
+        if (item && item.dataset.value !== undefined) chooseMode(item.dataset.value);
+    });
+    menu.addEventListener('keydown', onModeMenuKeydown);
+    menu.addEventListener('focusout', e => {
+        // 焦点在 wrap 内（含触发按钮）时保持打开，避免与 click 冲突
+        if (modeMenuOpen && !(wrap && wrap.contains(e.relatedTarget))) setModeMenuOpen(false, false);
+    });
+    document.addEventListener('click', e => {
+        if (!modeMenuOpen) return;
+        if (menu.contains(e.target) || trigger.contains(e.target)) return;
+        setModeMenuOpen(false, false);
+    });
+    if (typeof MutationObserver !== 'undefined' && sel) {
+        // 速通/翻卡模式会禁用原生 select（反射属性）→ 同步触发按钮外观并收起弹层
+        new MutationObserver(syncModeDisabled).observe(sel, { attributes: true, attributeFilter: ['disabled', 'hidden'] });
+    }
+    syncModeMenu();
 }
 
 // 句子填空：例句里能找到单词/同义词就挖空，否则退化为中文释义提示，避免空题干
@@ -290,11 +767,13 @@ function initApp() {
         populateDateSelect();
         selectedDate = normalizeSelectedDate(selectedDate);
         document.getElementById('dateSelect').value = selectedDate;
+        initBatchMenu();   // 渲染 + 绑定树形范围菜单（此刻 value 已定型，选中态会自动展开）
         document.getElementById('modeSelect').value = testMode;
+        initModeMenu();   // 渲染 + 绑定练习模式弹层（value 已定型，选中态同步）
         document.getElementById('directionSelect').value = testDirection;
         if (darkMode) {
             document.body.classList.add('dark');
-            document.getElementById('btnNightMode').textContent = '☀️';
+            document.getElementById('btnNightMode').textContent = '☀︎';
         }
         updateHideExamplesBtn();
         updateTime();
@@ -311,7 +790,7 @@ function initApp() {
 
     function updateHideExamplesBtn() {
         const b = document.getElementById('btnHideExamples');
-        b.textContent = hideExamples ? '🚫 例句' : '📄 例句';
+        b.textContent = '例句';
         b.title = hideExamples ? '例句已隐藏，点击恢复显示' : '点击隐藏例句';
         b.style.background = hideExamples ? 'var(--accent)' : '';
         b.style.color = hideExamples ? '#fff' : '';
@@ -328,7 +807,7 @@ function initApp() {
         } else if (testDirection === 2) {
             hint.textContent = '请选择正确的单词填空:';
         } else if (testDirection === 3) {
-            hint.textContent = '🔊 听音拼写';
+            hint.textContent = '听音拼写';
         }
     }
 
@@ -370,6 +849,8 @@ function initApp() {
             }
             (currentEl || sel).appendChild(opt);
         });
+        // select 结构变化后同步重建自定义树形菜单（含选项数量徽章）
+        renderBatchMenu();
     }
 
     // 把 localStorage 里的旧编码/已失效批次键归一化为当前可选项
@@ -418,7 +899,12 @@ function initApp() {
 
     function startSpeedMode() {
         if (isCardMode) return;
-        if (historyPos !== -1) returnToCurrentQuestion(); // 回看中进速通会带走一份回看态快照，先退出
+        // 浏览单词中进速通：先完整退出浏览，否则浏览列表和速通界面会同时激活
+        if (isBrowseMode) hideBrowseMode();
+        // 回看中进速通：一次性退出普通回看；只退一题会残留回看态，延时跳题也会污染速通
+        if (historyPos !== -1 || isViewingHistory || savedCurrentState || prevPendingNext) finishHistoryReview();
+        // 普通模式答题后的自动跳题如果还挂着，进速通前先清掉，避免它稍后触发 nextQuestion
+        if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; }
         const avail = getAvailableWords();
         if (avail.length === 0) {
             showToast('当前范围内没有单词，无法速通');
@@ -462,8 +948,8 @@ function initApp() {
         document.getElementById('navBtns').style.display = '';
         document.getElementById('btnPrev').disabled = true;
         document.getElementById('btnReturn').disabled = true;
-        document.getElementById('titleLabel').textContent = '⚡ 速通模式';
-        document.getElementById('shortcutHint').textContent = '速通中：1-4 选答案，答完自动下一题 | ← 看上一题 | → 返回 | 📖 可随时浏览单词';
+        document.getElementById('titleLabel').textContent = '速通模式';
+        document.getElementById('shortcutHint').textContent = '速通中：1-4 选答案，答完自动下一题 | ← 看上一题 | → 返回 | 可随时浏览单词';
         document.getElementById('progressFill').style.width = '0%';
         document.getElementById('btnSpeedMode').style.display = 'none';
         document.getElementById('btnExitSpeed').style.display = '';
@@ -512,7 +998,7 @@ function initApp() {
             correctIndex = currentOptions.indexOf(currentWord.word);
         } else if (testDirection === 3) {
             // 听音拼写模式
-            document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
+            document.getElementById('wordDisplay').textContent = '请听发音，输入英文单词';
             document.getElementById('exampleDisplay').textContent = '';
             document.getElementById('exampleCnDisplay').textContent = '';
             document.getElementById('optionsGrid').style.display = 'none';
@@ -696,7 +1182,7 @@ function initApp() {
         }
 
         const resultText = rec.ok ? '✓ 答对' : (rec.typed ? `✗ 你输入：${rec.typed}` : '✗ 答错');
-        document.getElementById('stageHint').textContent = `👀 回顾第 ${speedPrevPos + 1} 题（${resultText}） · ← 更早 / → 返回`;
+        document.getElementById('stageHint').textContent = `回顾第 ${speedPrevPos + 1} 题（${resultText}） · ← 更早 / → 返回`;
         document.getElementById('btnPrev').disabled = speedPrevPos <= 0;
         document.getElementById('btnReturn').disabled = false;
     }
@@ -767,13 +1253,13 @@ function initApp() {
         const hasMistakes = speedMistakes.length > 0;
 
         showModal('速通完成', `
-            <p style="text-align:center; font-size:1.2em; margin-bottom:10px;">🎉 速通挑战结束！</p>
+            <p style="text-align:center; font-size:1.2em; margin-bottom:10px;">速通挑战结束！</p>
             <p style="text-align:center;">共完成 ${total} 个单词</p>
             <p style="text-align:center;">正确 <span style="color:var(--progress-fill); font-weight:bold;">${speedCorrect}</span> 个，错误 <span style="color:var(--remaining-fg); font-weight:bold;">${speedMistakes.length}</span> 个</p>
             <p style="text-align:center; margin-bottom:20px;">正确率 ${accuracy}%</p>
             <div style="display:flex; gap:10px; justify-content:center;">
                 <button class="close-btn" id="modalCloseBtn" style="margin:0;">确定</button>
-                ${hasMistakes ? `<button id="btnReviewSpeedMistakes" style="background:var(--speed-accent); color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">🎯 重练错题 (${speedMistakes.length})</button>` : ''}
+                ${hasMistakes ? `<button id="btnReviewSpeedMistakes" style="background:var(--speed-accent); color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">重练错题 (${speedMistakes.length})</button>` : ''}
             </div>
         `);
 
@@ -790,7 +1276,7 @@ function initApp() {
     function enterCardMode() {
         const avail = getAvailableWords();
         if (!avail.length) {
-            showModalConfirm('⚠️ 没有可用单词', '当前选择的范围没有单词，请选择其他日期范围。', () => { closeModal(); }, '确定');
+            showModalConfirm('没有可用单词', '当前选择的范围没有单词，请选择其他日期范围。', () => { closeModal(); }, '确定');
             return;
         }
         isCardMode = true;
@@ -800,7 +1286,8 @@ function initApp() {
         document.getElementById('wordCard').classList.add('card-flippable');
         document.getElementById('btnSpeedMode').disabled = true;   // 翻卡下不提供速通
         document.getElementById('directionSelect').disabled = true;
-        document.getElementById('titleLabel').textContent = '🃏 翻卡自测';
+
+        document.getElementById('titleLabel').textContent = '翻卡自测';
         document.getElementById('shortcutHint').textContent = '空格/点击卡片翻面 | → 记住了 | ← 还没记住 | ↑ 回看上一张 | V 发音';
         // 翻卡里 ←/→ 已被自评占用，回看改用 ↑ 进入，故按钮文案同步改成 ↑
         document.getElementById('btnPrev').textContent = '上一张 (↑)';
@@ -822,7 +1309,7 @@ function initApp() {
         document.getElementById('wordDisplay').classList.remove('card-face');
         document.getElementById('btnSpeedMode').disabled = false;
         document.getElementById('directionSelect').disabled = false;
-        document.getElementById('titleLabel').textContent = '📝 词速 VocabSprint';
+        document.getElementById('titleLabel').textContent = '词速 VocabSprint';
         document.getElementById('shortcutHint').textContent = '快捷键: 1-4选答案 | Enter/空格 下一题 | ←上一题 | →返回 | A收藏 | S斩';
         document.getElementById('btnPrev').textContent = '上一题 (←)';
         document.getElementById('btnReturn').textContent = '返回 (→)';
@@ -851,7 +1338,7 @@ function initApp() {
             wd.textContent = w.word;
             document.getElementById('exampleDisplay').textContent = w.example || '';
             document.getElementById('exampleCnDisplay').textContent = '';
-            hint = '👆 回想中文意思，点击卡片翻面';
+            hint = '回想中文意思，点击卡片翻面';
         } else {
             wd.textContent = w.chinese;
             document.getElementById('exampleDisplay').textContent = w.example || '';
@@ -887,7 +1374,7 @@ function initApp() {
         const rec = cardHistory[cardPrevPos];
         currentWordIndex = rec.idx;
         currentWord = vocabulary[rec.idx];
-        renderCard(`👀 回顾第 ${cardPrevPos + 1} 张（${rec.known ? '✓ 记住了' : '✗ 还没记住'}） · ↑/← 更早 / → 返回`);
+        renderCard(`回顾第 ${cardPrevPos + 1} 张（${rec.known ? '✓ 记住了' : '✗ 还没记住'}） · ↑/← 更早 / → 返回`);
     }
 
     function showCardPrevious() {
@@ -950,12 +1437,12 @@ function initApp() {
     function finishCardMode() {
         const forgotUnique = [...new Set(cardForgotList)];
         showModal('翻卡完成', `
-            <p style="text-align:center; font-size:1.2em; margin-bottom:10px;">🎉 这一轮翻完了！</p>
+            <p style="text-align:center; font-size:1.2em; margin-bottom:10px;">这一轮翻完了！</p>
             <p style="text-align:center;">共 ${cardTotal} 张卡，记住 <span style="color:var(--progress-fill); font-weight:bold;">${cardKnown}</span> 个</p>
             <p style="text-align:center;">标记未记住 <span style="color:var(--remaining-fg); font-weight:bold;">${forgotUnique.length}</span> 个（已计入错题统计）</p>
             <div style="display:flex; gap:10px; justify-content:center; margin-top:18px; flex-wrap:wrap;">
                 <button class="close-btn" id="modalCloseBtn" style="margin:0;">确定</button>
-                ${forgotUnique.length ? `<button id="btnReviewCardForgot" style="background:var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">🔁 再翻一遍未记住的 (${forgotUnique.length})</button>` : ''}
+                ${forgotUnique.length ? `<button id="btnReviewCardForgot" style="background:var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">再翻一遍未记住的 (${forgotUnique.length})</button>` : ''}
             </div>
         `);
         if (forgotUnique.length) {
@@ -974,6 +1461,7 @@ function initApp() {
     function startReviewingMistakes(mistakeIndices) {
         testMode = 3;
         document.getElementById('modeSelect').value = "3";
+        syncModeMenu();   // 程序化改值不会派发 change，需手动同步触发按钮文案与选中态
 
         unmasteredIndices = [];
         reviewQueue = [];
@@ -1018,7 +1506,7 @@ function initApp() {
         document.getElementById('navBtns').style.display = '';
         document.getElementById('btnPrev').disabled = history.length === 0;
         document.getElementById('btnReturn').disabled = true;
-        document.getElementById('titleLabel').textContent = '📝 词速 VocabSprint';
+        document.getElementById('titleLabel').textContent = '词速 VocabSprint';
         document.getElementById('shortcutHint').textContent = '快捷键: 1-4选答案 | Enter/空格 下一题 | ←上一题 | →返回 | A收藏 | S斩';
         document.getElementById('btnSpeedMode').style.display = '';
         document.getElementById('btnExitSpeed').style.display = 'none';
@@ -1032,7 +1520,7 @@ function initApp() {
             document.getElementById('inputModeContainer').style.display = 'flex';
             document.getElementById('inputModeContainer').style.flexDirection = 'column';
             document.getElementById('inputModeContainer').style.alignItems = 'center';
-            document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
+            document.getElementById('wordDisplay').textContent = '请听发音，输入英文单词';
             document.getElementById('answerInput').value = '';
             document.getElementById('answerInput').placeholder = '输入英文单词...';
             document.getElementById('inputFeedback').textContent = '';
@@ -1100,11 +1588,11 @@ function initApp() {
         document.getElementById('exampleCnDisplay').textContent = '';
         const avail = getAvailableWords();
         if (!avail.length) { 
-            showModalConfirm('⚠️ 没有可用单词', '当前选择的范围没有单词，请选择其他日期范围。', () => { closeModal(); }, '确定');
+            showModalConfirm('没有可用单词', '当前选择的范围没有单词，请选择其他日期范围。', () => { closeModal(); }, '确定');
             return; 
         }
         if (!unmasteredIndices.length && !wrongQueue.length && !reviewQueue.length) {
-            showModalConfirm('🎉 全部掌握！', '当前范围单词已全部掌握，重新开始。', () => { closeModal(); resetAndStart(); }, '重新开始');
+            showModalConfirm('全部掌握！', '当前范围单词已全部掌握，重新开始。', () => { closeModal(); resetAndStart(); }, '重新开始');
             return;
         }
         if (currentWord && !isViewingHistory) {
@@ -1174,7 +1662,7 @@ function initApp() {
         currentWord = vocabulary[nextIdx];
         hasMistake = false; isAnswering = true; isViewingHistory = false; historyPos = -1; prevPendingNext = false;
         document.getElementById('btnReturn').disabled = true;
-        document.getElementById('btnHardWord').textContent = hardWords.has(nextIdx) ? '★' : '⭐';
+        document.getElementById('btnHardWord').textContent = hardWords.has(nextIdx) ? '★' : '☆';
         if (testDirection === 0) {
             document.getElementById('wordDisplay').textContent = currentWord.word;
             // 英文选中文模式：如果例句不包含当前单词但包含同义词，替换成当前单词显示
@@ -1192,7 +1680,7 @@ function initApp() {
             correctIndex = currentOptions.indexOf(currentWord.word);
         } else if (testDirection === 3) {
             // 听音拼写模式
-            document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
+            document.getElementById('wordDisplay').textContent = '请听发音，输入英文单词';
             document.getElementById('exampleDisplay').textContent = '';
             document.getElementById('exampleCnDisplay').textContent = '';
             document.getElementById('optionsGrid').style.display = 'none';
@@ -1369,14 +1857,32 @@ function initApp() {
         } else {
             document.getElementById('exampleCnDisplay').textContent = p.example_cn || '';
         }
-        document.getElementById('stageHint').textContent = `👀 回顾第 ${historyPos + 1} 题 · ← 更早 / → 返回`;
-        document.getElementById('btnHardWord').textContent = p.hard ? '★' : '⭐';
+        document.getElementById('stageHint').textContent = `回顾第 ${historyPos + 1} 题 · ← 更早 / → 返回`;
+        document.getElementById('btnHardWord').textContent = p.hard ? '★' : '☆';
         $$('.option-btn').forEach((b, i) => {
             b.textContent = p.opts[i] || '-'; b.className = 'option-btn'; b.disabled = true;
             if (i === p.correct) b.classList.add('correct');
         });
         document.getElementById('btnPrev').disabled = historyPos <= 0;
         document.getElementById('btnReturn').disabled = false;
+    }
+
+    // 一次性退出普通回看：连续返回到最新题，并丢弃等待中的自动跳题
+    function finishHistoryReview() {
+        if (nextTimeout) { clearTimeout(nextTimeout); nextTimeout = null; }
+        prevPendingNext = false; // 答题后的延时跳题不能在速通中补发
+        let guard = 0;
+        while (historyPos !== -1 && guard++ < history.length + 2) {
+            returnToCurrentQuestion();
+        }
+        // 兜底清理：即使快照缺失，也不把回看态带进速通
+        historyPos = -1;
+        isViewingHistory = false;
+        savedCurrentState = null;
+        prevPendingNext = false;
+        document.getElementById('btnReturn').disabled = true;
+        document.getElementById('btnPrev').disabled = history.length === 0;
+        updateDirectionUI(); // 清掉「回顾第 N 题」提示
     }
 
     function returnToCurrentQuestion() {
@@ -1401,7 +1907,7 @@ function initApp() {
         } else if (s.td === 2 && s.w) {
             document.getElementById('wordDisplay').textContent = buildBlankPrompt(s.w);
         } else if (s.td === 3 && s.w) {
-            document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
+            document.getElementById('wordDisplay').textContent = '请听发音，输入英文单词';
         } else {
             document.getElementById('wordDisplay').textContent = '';
         }
@@ -1410,7 +1916,7 @@ function initApp() {
         if (s.ecnHTML) document.getElementById('exampleCnDisplay').innerHTML = s.ecnHTML;
         else document.getElementById('exampleCnDisplay').textContent = s.ecnd || '';
         updateDirectionUI();
-        document.getElementById('btnHardWord').textContent = currentWordIndex !== null && hardWords.has(currentWordIndex) ? '★' : '⭐';
+        document.getElementById('btnHardWord').textContent = currentWordIndex !== null && hardWords.has(currentWordIndex) ? '★' : '☆';
         $$('.option-btn').forEach((b, i) => { b.textContent = s.bs[i].t; b.className = s.bs[i].c; b.disabled = s.bs[i].d; });
         if (s.td === 3) {
             document.getElementById('optionsGrid').style.display = 'none';
@@ -1433,7 +1939,7 @@ function initApp() {
         if (isCardMode && cardPrevPos !== -1) return; // 回看中标记的是历史卡，会标错词
         if (hardWords.has(currentWordIndex)) { hardWords.delete(currentWordIndex); showToast('已取消难词标记'); }
         else { hardWords.add(currentWordIndex); showToast('已标记为难词'); }
-        document.getElementById('btnHardWord').textContent = hardWords.has(currentWordIndex) ? '★' : '⭐';
+        document.getElementById('btnHardWord').textContent = hardWords.has(currentWordIndex) ? '★' : '☆';
         saveProgress();
     }
 
@@ -1494,7 +2000,7 @@ function initApp() {
                             ${arr.map(v => `
                                 <span style="display:inline-flex; align-items:center; gap:4px;">
                                     ${v.word}
-                                    <button class="btn-icon speak-btn" data-word="${v.word}" style="border:none; background:none; cursor:pointer; font-size:16px; padding:0 !important; min-height:auto; width:auto; height:auto;">🔊</button>
+                                    <button class="btn-icon speak-btn" data-word="${v.word}" aria-label="播放发音"><svg class="ic" aria-hidden="true"><use href="#icon-volume"></use></svg></button>
                                 </span>
                             `).join('<span style="color:var(--example-fg); font-weight:normal;">=</span>')}
                         </div>
@@ -1509,7 +2015,7 @@ function initApp() {
         list.querySelectorAll('.speak-btn').forEach(btn => {
             btn.onclick = (e) => { e.stopPropagation(); speak(btn.dataset.word); };
         });
-        document.getElementById('browseTitle').textContent = `📖 单词浏览 (${Object.keys(groups).length}组)`;
+        document.getElementById('browseTitle').textContent = `单词浏览 (${Object.keys(groups).length}组)`;
         document.getElementById('btnBackToTest').textContent = isSpeedMode ? '返回速通' : '返回测试';
     }
 
@@ -1630,7 +2136,7 @@ function initApp() {
         document.getElementById('btnExitSpeed').addEventListener('click', exitSpeedMode);
         document.getElementById('btnNightMode').addEventListener('click', () => {
             darkMode = !darkMode; document.body.classList.toggle('dark', darkMode);
-            document.getElementById('btnNightMode').textContent = darkMode ? '☀️' : '🌙'; saveProgress();
+            document.getElementById('btnNightMode').textContent = darkMode ? '☀︎' : '☾'; saveProgress();
         });
         document.getElementById('btnFontMinus').addEventListener('click', () => {
             if (fontSizes.large > 16) { fontSizes.large -= 2; fontSizes.medium -= 1; fontSizes.small -= 1; applyFontSizes(); saveProgress(); }
@@ -1641,20 +2147,31 @@ function initApp() {
         document.getElementById('btnWrongBook').addEventListener('click', () => {
             let html = Object.entries(wrongWords).sort((a, b) => b[1] - a[1]).map(([k, v]) => {
                 const w = vocabulary[parseInt(k)];
-                return w ? `<div>${w.word} - ${w.chinese} (${v}次)</div>` : '';
-            }).join('') || '<p>无错题</p>';
-            document.getElementById('modalDialog').innerHTML = `<h3>错题统计</h3>${html}<button id="modalCloseBtn" style="margin-top:12px">关闭</button>`;
+                return w ? `<div class="wrong-item"><span class="wrong-word">${w.word}</span><span class="wrong-cn">${w.chinese}</span><span class="wrong-count">${v}次</span></div>` : '';
+            }).join('') || '<p class="empty-state">无错题</p>';
+            document.getElementById('modalDialog').innerHTML = `<div class="modal-head"><h3>错题统计</h3></div><div class="wrong-list">${html}</div><button id="modalCloseBtn">关闭</button>`;
             document.getElementById('modalOverlay').classList.add('active');
             document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
         });
         document.getElementById('btnHelp').addEventListener('click', () => {
-            document.getElementById('modalDialog').innerHTML = `<h3>快捷键</h3><div style="line-height:2"><p>1-4: 选答案</p><p>Enter/空格: 下一题</p><p>←/→: 历史回顾（速通中可 ← 看上一题、→ 返回）</p><p>A: 难词 S: 斩词</p><p>V: 播放发音</p><p>🃏 翻卡: 空格/点击翻面（可翻回英文） | ←还没记住 | →记住了 | ↑回看上一张（回看中 ←更早 / →返回）</p><p>📖 浏览: 点击按钮/Esc退出</p></div><button id="modalCloseBtn">关闭</button>`;
+            document.getElementById('modalDialog').innerHTML = `
+                <div class="modal-head"><h3>快捷键</h3></div>
+                <div class="help-list">
+                    <div class="help-row"><span class="keys"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></span><span class="desc">选答案</span></div>
+                    <div class="help-row"><span class="keys"><kbd>Enter</kbd> / <kbd>空格</kbd></span><span class="desc">下一题</span></div>
+                    <div class="help-row"><span class="keys"><kbd>←</kbd> / <kbd>→</kbd></span><span class="desc">历史回顾（速通中 ← 看上一题、→ 返回）</span></div>
+                    <div class="help-row"><span class="keys"><kbd>A</kbd> <kbd>S</kbd></span><span class="desc">难词 / 斩词</span></div>
+                    <div class="help-row"><span class="keys"><kbd>V</kbd></span><span class="desc">播放发音</span></div>
+                    <div class="help-row"><span class="keys"><kbd>空格</kbd> / <kbd>点击卡片</kbd></span><span class="desc">翻卡：翻面（可翻回英文） · <kbd>←</kbd> 还没记住 · <kbd>→</kbd> 记住了 · <kbd>↑</kbd> 回看上一张（回看中 ← 更早 / → 返回）</span></div>
+                    <div class="help-row"><span class="keys"><kbd>Esc</kbd></span><span class="desc">浏览：退出（点击按钮可随时进入）</span></div>
+                </div>
+                <button id="modalCloseBtn">关闭</button>`;
             document.getElementById('modalOverlay').classList.add('active');
             document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
         });
         document.getElementById('btnAutoSpeak').onclick = () => {
             autoSpeak = !autoSpeak;
-            document.getElementById('btnAutoSpeak').textContent = autoSpeak ? '🔊 On' : '🔊 Off';
+            document.getElementById('btnAutoSpeak').textContent = autoSpeak ? '♪ On' : '♪ Off';
             document.getElementById('btnAutoSpeak').style.background = autoSpeak ? 'var(--accent)' : '';
             document.getElementById('btnAutoSpeak').style.color = autoSpeak ? '#fff' : '';
             saveProgress();
@@ -1706,8 +2223,8 @@ function initApp() {
             hideBrowseMode();
             document.getElementById('btnBackToTest').textContent = '返回测试';
         });
-        document.getElementById('dateSelect').addEventListener('change', function () { selectedDate = this.value; isViewingHistory = false; savedCurrentState = null; history = []; historyPos = -1; prevPendingNext = false; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
-        document.getElementById('modeSelect').addEventListener('change', function () { testMode = parseInt(this.value); isViewingHistory = false; savedCurrentState = null; history = []; historyPos = -1; prevPendingNext = false; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
+        document.getElementById('dateSelect').addEventListener('change', function () { selectedDate = this.value; isViewingHistory = false; savedCurrentState = null; history = []; historyPos = -1; prevPendingNext = false; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; syncBatchMenu(); resetAndStart(); });
+        document.getElementById('modeSelect').addEventListener('change', function () { testMode = parseInt(this.value); isViewingHistory = false; savedCurrentState = null; history = []; historyPos = -1; prevPendingNext = false; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; syncModeMenu(); resetAndStart(); });
         document.getElementById('directionSelect').addEventListener('change', function () { testDirection = parseInt(this.value); updateDirectionUI(); isViewingHistory = false; savedCurrentState = null; history = []; historyPos = -1; prevPendingNext = false; wrongQueue = []; reviewQueue = []; slashedWords.clear(); questionCounter = 0; resetAndStart(); });
     }
 
@@ -1878,61 +2395,115 @@ function initApp() {
         return words;
     }
     
+    // 自定义词汇去重键：单词 + 同义词（忽略大小写和首尾空格）
+    function csvDedupeKey(word, synonym) {
+        return `${(word || '').trim().toLowerCase()}\u0000${(synonym || '').trim().toLowerCase()}`;
+    }
+
+    function applyCsvImport(parsedWords, failedFiles) {
+        // 速通中的索引表正在使用，导入会重排 _idx 导致当前题目错位；先退出速通再导入
+        if (isSpeedMode) {
+            showToast('速通中无法导入词汇，请先退出速通');
+            return;
+        }
+        if (!parsedWords.length) {
+            showToast(failedFiles > 0 ? 'CSV 导入失败，请检查文件格式' : 'CSV 中没有可导入的词汇');
+            return;
+        }
+
+        // 已有自定义词汇（id < 0）参与去重，避免重复导入同一批文件
+        const seen = new Set(vocabulary.filter(v => v.id < 0).map(v => csvDedupeKey(v.word, v.synonym)));
+        let nextId = Math.min(0, ...vocabulary.filter(v => v.id < 0).map(v => v.id)) - 1;
+        const added = [];
+        let skipped = 0;
+
+        parsedWords.forEach(w => {
+            const word = (w.a || '').trim();
+            if (!word) { skipped++; return; } // 空单词视为无效行
+            const key = csvDedupeKey(word, w.b);
+            if (seen.has(key)) { skipped++; return; }
+            seen.add(key);
+            added.push({ ...w, a: word });
+        });
+
+        if (!added.length) {
+            const failTip = failedFiles > 0 ? `，${failedFiles} 个文件解析失败` : '';
+            showToast(`未导入新词汇：${skipped} 个重复或无效${failTip}`);
+            return;
+        }
+
+        if (isBrowseMode) hideBrowseMode();
+        added.forEach(w => {
+            vocabulary.unshift({
+                id: nextId--, // 继续使用未占用的负数 id
+                word: w.a,
+                chinese: w.ch,
+                synonym: w.b,
+                example: w.ex,
+                example_cn: w.cn,
+                a: w.a,
+                ch: w.ch,
+                b: w.b,
+                ex: w.ex,
+                cn: w.cn
+            });
+        });
+
+        const skipTip = skipped > 0 ? `，跳过 ${skipped} 个重复或无效` : '';
+        const failTip = failedFiles > 0 ? `，${failedFiles} 个文件解析失败` : '';
+        showToast(`成功导入 ${added.length} 个自定义词汇${skipTip}${failTip}`);
+
+        vocabulary.forEach((v, i) => { v._idx = i; });
+        saveProgress();
+
+        // 刷新界面
+        updateDirectionUI();
+
+        // 重置界面显示状态
+        if (testDirection === 3) {
+            document.getElementById('optionsGrid').style.display = 'none';
+            document.getElementById('inputModeContainer').style.display = 'flex';
+            document.getElementById('inputModeContainer').style.flexDirection = 'column';
+            document.getElementById('inputModeContainer').style.alignItems = 'center';
+        } else {
+            document.getElementById('optionsGrid').style.display = 'grid';
+            document.getElementById('inputModeContainer').style.display = 'none';
+        }
+
+        resetAndStart();
+    }
+
     function handleCsvImport(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const customWords = parseCSV(event.target.result);
-                if (customWords.length === 0) {
-                    showToast('CSV 导入失败，请检查文件格式');
-                    return;
-                }
-                
-                customWords.forEach((w, i) => {
-                    vocabulary.unshift({
-                        id: -1 - i,
-                        word: w.a,
-                        chinese: w.ch,
-                        synonym: w.b,
-                        example: w.ex,
-                        example_cn: w.cn,
-                        a: w.a,
-                        ch: w.ch,
-                        b: w.b,
-                        ex: w.ex,
-                        cn: w.cn
-                    });
-                });
-                
-                showToast(`成功导入 ${customWords.length} 个自定义词汇`);
-                
-                vocabulary.forEach((v, i) => { v._idx = i; });
-                saveProgress();
-                
-                // 刷新界面
-                updateDirectionUI();
-                
-                // 重置界面显示状态
-                if (testDirection === 3) {
-                    document.getElementById('optionsGrid').style.display = 'none';
-                    document.getElementById('inputModeContainer').style.display = 'flex';
-                    document.getElementById('inputModeContainer').style.flexDirection = 'column';
-                    document.getElementById('inputModeContainer').style.alignItems = 'center';
-                } else {
-                    document.getElementById('optionsGrid').style.display = 'grid';
-                    document.getElementById('inputModeContainer').style.display = 'none';
-                }
-                
-                resetAndStart();
-            } catch (err) {
-                showToast('CSV 解析失败：' + err.message);
-            }
+        const files = Array.from(e.target.files || []);
+        if (!files.length) { e.target.value = ''; return; }
+        e.target.value = ''; // 立即清空，保证同一批文件可以再次选择导入
+
+        const results = new Array(files.length);
+        let pending = files.length;
+        let failedFiles = 0;
+
+        const finishOne = () => {
+            pending--;
+            if (pending > 0) return;
+            const merged = [];
+            results.forEach(list => { if (list) merged.push(...list); });
+            applyCsvImport(merged, failedFiles);
         };
-        reader.readAsText(file);
-        e.target.value = '';
+
+        files.forEach((file, i) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    results[i] = parseCSV(event.target.result);
+                } catch (err) {
+                    results[i] = [];
+                    failedFiles++;
+                }
+                finishOne();
+            };
+            reader.onerror = () => { results[i] = []; failedFiles++; finishOne(); };
+            reader.readAsText(file);
+        });
     }
 
     function updateTime() {
@@ -1959,7 +2530,7 @@ function initApp() {
                 autoSpeak = d.autoSpeak ?? false;
                 hideExamples = d.hideExamples ?? false;
                 if (autoSpeak) {
-                    document.getElementById('btnAutoSpeak').textContent = '🔊 On';
+                    document.getElementById('btnAutoSpeak').textContent = '♪ On';
                     document.getElementById('btnAutoSpeak').style.background = 'var(--accent)';
                     document.getElementById('btnAutoSpeak').style.color = '#fff';
                 }

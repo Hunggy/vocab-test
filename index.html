@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>词速 VocabSprint · 英语单词速通</title>
     <meta name="description" content="英语单词速通：四种题型、段次大测、离线可用。">
-    <meta name="theme-color" content="#4a90d9">
+    <meta name="theme-color" content="#f3f2ee">
+    <meta name="theme-color" content="#141620" media="(prefers-color-scheme: dark)">
 
     <!-- 添加到主屏幕（iOS） -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,48 +17,119 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" type="image/png" href="icons/icon-192.png">
     <link rel="stylesheet" href="style.css">
+    <!-- 关键样式内联：即使旧 CSS 仍在缓存，树形菜单也不会在首屏自动展开 -->
+    <style>#batchMenu[hidden],#modeMenu[hidden]{display:none!important}</style>
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+    <symbol id="icon-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 20h16" opacity="0.45"/><path d="M7.5 20v-7"/><path d="M12 20V6"/><path d="M16.5 20v-10"/>
+    </symbol>
+    <symbol id="icon-export" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 14.5V4"/><path d="m8.2 7.5 3.8-3.8 3.8 3.8"/><path d="M4.5 14.5v2.7A2.8 2.8 0 0 0 7.3 20h9.4a2.8 2.8 0 0 0 2.8-2.8v-2.7"/>
+    </symbol>
+    <symbol id="icon-import" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 4v10.5"/><path d="m8.2 11 3.8 3.8 3.8-3.8"/><path d="M4.5 14.5v2.7A2.8 2.8 0 0 0 7.3 20h9.4a2.8 2.8 0 0 0 2.8-2.8v-2.7"/>
+    </symbol>
+    <symbol id="icon-csv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"/><path d="M13.5 3v5.5H19"/><path d="M12 11.5v5"/><path d="m9.8 14.3 2.2 2.2 2.2-2.2"/>
+    </symbol>
+    <symbol id="icon-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><path d="M9.4 9.4a2.7 2.7 0 1 1 3.9 2.4c-.8.4-1.3 1-1.3 1.9"/><path d="M12 16.6h0.01"/>
+    </symbol>
+    <symbol id="icon-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2.5 4.5 13.5h6L10 21.5l8.5-11h-6z"/>
+    </symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+    </symbol>
+    <symbol id="icon-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 5.5 6.5 9H3.5v6H6.5l4.5 3.5z"/><path d="M15.3 9a4.6 4.6 0 0 1 0 6"/><path d="M18 6.5a8.4 8.4 0 0 1 0 11"/>
+    </symbol>
+    <symbol id="icon-cut" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="6" cy="6" r="2.8"/><circle cx="6" cy="18" r="2.8"/><path d="M20 4 8.2 15.8"/><path d="M14.6 14.6 20 20"/><path d="M8.2 8.2 12 12"/>
+    </symbol>
+    <symbol id="icon-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2.5 5.5 8 11l5.5-5.5"/>
+    </symbol>
+</svg>
 <div class="app-container" id="appContainer">
+    <!-- 工具栏：左侧「视图 / 偏好 / 数据 / 帮助」分组，右侧主操作 -->
     <div class="toolbar">
-        <button class="btn-icon" id="btnFontMinus">A-</button>
-        <button class="btn-icon" id="btnFontPlus">A+</button>
-        <button class="btn-icon" id="btnNightMode">🌙</button>
-        <button class="btn-icon" id="btnAutoSpeak" title="自动发音开关">🔊 Off</button>
-        <button id="btnWrongBook">📊 错题统计</button>
-        <button class="btn-icon" id="btnHideExamples" title="点击隐藏例句">📄 例句</button>
-        <button class="btn-icon" id="btnExport" title="导出进度">📤</button>
-        <button class="btn-icon" id="btnImport" title="导入进度">📥</button>
-        <input type="file" id="importFile" style="display:none" accept=".json">
-        <input type="file" id="importCsvFile" style="display:none" accept=".csv">
-        <button class="btn-icon" id="btnImportCsv" title="导入CSV词汇">📥 CSV</button>
-        <button class="btn-icon" id="btnHelp">?</button>
-        <span class="spacer"></span>
-        <button id="btnSpeedMode" class="btn-speed">⚡ 速通</button>
-        <button id="btnExitSpeed" style="display:none;background:#e74c3c;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:var(--font-small);">退出速通</button>
-        <button id="btnBrowse" class="btn-browse">📖 浏览单词</button>
-        <span class="combo-wrap">
-            <select id="directionSelect">
-                <option value="0">英文选中文</option>
-                <option value="1">中文选英文</option>
-                <option value="2">句子填空</option>
-                <option value="3">🔊 听音拼写</option>
-            </select>
-        </span>
+        <div class="tool-group">
+            <button class="btn-icon" id="btnFontMinus" aria-label="缩小字号">A-</button>
+            <button class="btn-icon" id="btnFontPlus" aria-label="放大字号">A+</button>
+            <button class="btn-icon" id="btnNightMode" aria-label="切换夜间模式">☾</button>
+        </div>
+        <div class="tool-group">
+            <button class="btn-icon" id="btnAutoSpeak" title="自动发音开关">♪ Off</button>
+            <button class="btn-icon" id="btnHideExamples" title="点击隐藏例句">例句</button>
+        </div>
+        <div class="tool-group">
+            <button class="btn-icon" id="btnWrongBook" title="错题统计">
+                <svg class="ic" aria-hidden="true"><use href="#icon-chart"></use></svg><span class="btn-label">错题统计</span>
+            </button>
+            <button class="btn-icon" id="btnExport" title="导出进度" aria-label="导出进度">
+                <svg class="ic" aria-hidden="true"><use href="#icon-export"></use></svg><span class="btn-label">导出</span>
+            </button>
+            <button class="btn-icon" id="btnImport" title="导入进度" aria-label="导入进度">
+                <svg class="ic" aria-hidden="true"><use href="#icon-import"></use></svg><span class="btn-label">导入</span>
+            </button>
+            <button class="btn-icon" id="btnImportCsv" title="导入CSV词汇">
+                <svg class="ic" aria-hidden="true"><use href="#icon-csv"></use></svg><span class="btn-label">CSV</span>
+            </button>
+            <input type="file" id="importFile" accept=".json">
+            <input type="file" id="importCsvFile" accept=".csv" multiple>
+        </div>
+        <div class="tool-group">
+            <button class="btn-icon" id="btnHelp" aria-label="快捷键帮助" title="快捷键帮助">
+                <svg class="ic" aria-hidden="true"><use href="#icon-help"></use></svg>
+            </button>
+        </div>
+        <span class="spacer toolbar-spacer"></span>
+        <div class="tool-group tool-group-primary">
+            <button id="btnSpeedMode" class="btn-speed">
+                <svg class="ic" aria-hidden="true"><use href="#icon-bolt"></use></svg><span class="btn-label">速通</span>
+            </button>
+            <button id="btnExitSpeed" style="display:none;">退出速通</button>
+            <button id="btnBrowse" class="btn-browse">
+                <svg class="ic" aria-hidden="true"><use href="#icon-book"></use></svg><span class="btn-label">浏览单词</span>
+            </button>
+            <span class="combo-wrap">
+                <select id="directionSelect">
+                    <option value="0">英文选中文</option>
+                    <option value="1">中文选英文</option>
+                    <option value="2">句子填空</option>
+                    <option value="3">听音拼写</option>
+                </select>
+            </span>
+        </div>
     </div>
     <div class="header-row" id="headerRow">
-        <span class="title" id="titleLabel">📝 词速 VocabSprint</span>
-        <span class="combo-wrap">
-            <select id="dateSelect">
-                <option value="custom">📥 自定义词汇</option>
+        <span class="title" id="titleLabel">词速 VocabSprint</span>
+        <span class="combo-wrap batch-select-wrap" id="batchSelectWrap">
+            <button type="button" class="batch-trigger" id="batchTrigger" aria-haspopup="tree" aria-expanded="false" aria-label="选择词汇范围">
+                <span class="batch-value" id="batchTriggerLabel">全部</span>
+            </button>
+            <div class="batch-menu" id="batchMenu" role="tree" aria-label="词汇范围" hidden></div>
+            <!-- 隐藏的原生 select 仍是数据/语义桥梁：JS 只改 value/disabled，自定义树形菜单负责展示 -->
+            <select id="dateSelect" hidden>
+                <option value="custom">自定义词汇</option>
             </select>
-            <select id="modeSelect">
+        </span>
+        <span class="combo-wrap batch-select-wrap" id="modeSelectWrap">
+            <button type="button" class="batch-trigger" id="modeTrigger" aria-haspopup="listbox" aria-expanded="false" aria-label="选择练习模式">
+                <span class="batch-value" id="modeTriggerLabel">全部单词</span>
+            </button>
+            <div class="batch-menu mode-menu" id="modeMenu" role="listbox" aria-label="练习模式" hidden></div>
+            <!-- 隐藏的原生 select 仍是数据/语义桥梁：JS 只改 value/disabled，弹层负责展示 -->
+            <select id="modeSelect" hidden>
                 <option value="0">全部单词</option>
                 <option value="1">前一半</option>
                 <option value="2">后一半</option>
                 <option value="3">只复习错题</option>
                 <option value="4">只复习难词</option>
-                <option value="5">🃏 翻卡自测</option>
+                <option value="5">翻卡自测</option>
             </select>
         </span>
         <span class="stats" id="statsRow">
@@ -69,11 +141,15 @@
     <div class="progress-wrap" id="progressWrap"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
     <div class="word-card" id="wordCard">
         <div class="top-actions" id="topActions">
-            <button id="btnHardWord">⭐</button>
-            <button id="btnSlashWord">🔪</button>
+            <button id="btnHardWord" aria-label="加入难词" title="难词">☆</button>
+            <button id="btnSlashWord" aria-label="斩掉此词" title="斩词">
+                <svg class="ic" aria-hidden="true"><use href="#icon-cut"></use></svg>
+            </button>
         </div>
         <div class="word-display" id="wordDisplay"></div>
-        <button id="btnSpeak" class="btn-icon" style="border-radius:50%; width:40px; height:40px; margin: 0 auto 10px; display:block;" title="发音">🔊</button>
+        <button id="btnSpeak" class="btn-icon" aria-label="播放发音" title="发音">
+            <svg class="ic" aria-hidden="true"><use href="#icon-volume"></use></svg>
+        </button>
         <div class="example-display" id="exampleDisplay"></div>
         <div class="example-cn-display" id="exampleCnDisplay"></div>
         <div class="stage-hint" id="stageHint">请选择中文解释:</div>
@@ -84,19 +160,19 @@
         <button class="option-btn" data-index="2">-</button>
         <button class="option-btn" data-index="3">-</button>
     </div>
-    <div class="input-mode-container" id="inputModeContainer" style="display:none;">
-        <input type="text" id="answerInput" placeholder="输入答案..." style="width:100%; max-width:300px; padding:12px 16px; border-radius:8px; border:2px solid var(--border); background:var(--btn-bg); color:var(--fg); font-size:18px; text-align:center; margin-bottom:12px;">
-        <button id="btnSubmitAnswer" style="background:var(--accent); color:#fff; border:none; padding:10px 30px; border-radius:8px; cursor:pointer; font-size:16px;">提交答案</button>
-        <div id="inputFeedback" style="margin-top:12px; min-height:24px; text-align:center;"></div>
+    <div class="input-mode-container" id="inputModeContainer">
+        <input type="text" id="answerInput" placeholder="输入答案..." autocapitalize="off" autocomplete="off" spellcheck="false">
+        <button id="btnSubmitAnswer">提交答案</button>
+        <div id="inputFeedback"></div>
     </div>
-    <div class="card-actions" id="cardActions" style="display:none;">
+    <div class="card-actions" id="cardActions">
         <button id="btnCardForgot" class="card-btn card-btn-wrong">✗ 还没记住</button>
         <button id="btnCardKnown" class="card-btn card-btn-right">✓ 记住了</button>
     </div>
     <div class="browse-container" id="browseContainer">
         <div class="browse-header">
-            <h3 id="browseTitle">📖 单词浏览</h3>
-            <input type="text" id="browseSearch" placeholder="搜索单词或中文..." style="padding:6px 10px; border-radius:6px; border:1px solid var(--border); background:var(--btn-bg); color:var(--fg); flex:1; max-width:200px; font-size:var(--font-small);">
+            <h3 id="browseTitle">单词浏览</h3>
+            <input type="text" id="browseSearch" placeholder="搜索单词或中文...">
             <button id="btnBackToTest" class="close-btn" style="margin:0;">返回测试</button>
         </div>
         <div id="browseList"></div>
@@ -111,7 +187,7 @@
     </div>
 </div>
 <div class="modal-overlay" id="modalOverlay"><div class="modal-dialog" id="modalDialog"></div></div>
-<div id="toastContainer" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;"></div>
+<div id="toastContainer"></div>
 
 <script src="script.js"></script>
 </body>
