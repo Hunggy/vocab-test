@@ -1,7 +1,25 @@
 const STORAGE_KEY = 'vocab_test_progress';
 
 let vocabulary = [];
-let batches = [];   // [{ key, label, deck, seg, exam, cards }]，按 vocabulary.json 的 batches 元数据顺序
+let batches = [];   // [{ key, label, deck, seg, exam, category, cards }]，按 vocabulary.json 的 batches 元数据顺序
+
+// 一类条目可能有多张同义卡：a、b，以及 alts（第二個以後的同義詞）
+function synonymVariants(word) {
+    const variants = [];
+    const add = value => {
+        if (typeof value !== 'string') return;
+        const text = value.trim();
+        if (text && !variants.includes(text)) variants.push(text);
+    };
+    add(word.b);
+    if (Array.isArray(word.alts)) word.alts.forEach(add);
+    return variants;
+}
+
+function entryCardCount(word) {
+    const primary = typeof word.a === 'string' ? word.a.trim() : '';
+    return 1 + synonymVariants(word).filter(v => v !== primary).length;
+}
 
 async function loadVocabulary() {
     let data = null;
@@ -30,39 +48,46 @@ async function loadVocabulary() {
         const words = Array.isArray(data.groups[date]) ? data.groups[date] : [];
 
         words.forEach(word => {
-            const synonym = typeof word.b === 'string' ? word.b.trim() : '';
-            // 无同义词时 a 卡也要正常出题（b 字段缺失/为空 → 单卡）
-            vocabulary.push({
-                _idx: idx++,
-                id: word.id,
-                word: word.a || '',
-                synonym: synonym,
-                chinese: word.ch || '',
-                example: word.ex || '',
-                example_cn: word.cn || '',
-                date: date,
-                synonymIndices: []
-            });
+            const primary = typeof word.a === 'string' ? word.a.trim() : '';
+            const variants = synonymVariants(word).filter(v => v !== primary);
 
-            // 仅在有非空同义词时添加第二张卡，两张卡共享同一个 id
-            if (synonym) {
+            const addCard = (text, synonym) => {
                 vocabulary.push({
                     _idx: idx++,
                     id: word.id,
-                    word: synonym,
-                    synonym: word.a || '',
+                    word: text,
+                    synonym: synonym,
                     chinese: word.ch || '',
                     example: word.ex || '',
                     example_cn: word.cn || '',
                     date: date,
                     synonymIndices: []
                 });
-            }
+            };
+
+            // a 卡（无同义词时也要正常出题）；同义词字段指向第一个变体
+            addCard(primary, variants[0] || '');
+            // b / alts 卡：各自独立出题，同义词字段指回主词
+            variants.forEach(variant => addCard(variant, primary));
+        });
+    });
+
+    // 同一 id 的卡片互為同義詞兄弟；英選中時要排除彼此的詞，避免同義詞成為干擾項
+    const byId = {};
+    vocabulary.forEach(card => {
+        if (typeof card.id !== 'number') return;
+        (byId[card.id] = byId[card.id] || []).push(card._idx);
+    });
+    Object.keys(byId).forEach(id => {
+        const list = byId[id];
+        list.forEach(self => {
+            vocabulary[self].synonymIndices = list.filter(other => other !== self);
         });
     });
 
     batches = buildBatchList(data);
 }
+
 
 // ===== 批次元数据与层级过滤（纯逻辑，不碰 DOM，便于独立测试）=====
 
@@ -75,9 +100,7 @@ function buildBatchList(data) {
         if (!words.length) return; // 空分组跳过，不进入批次下拉框
         let cardCount = 0;
         words.forEach(word => {
-            cardCount++;
-            const synonym = typeof word.b === 'string' ? word.b.trim() : '';
-            if (synonym) cardCount++;
+            cardCount += entryCardCount(word);
         });
         stats[date] = { cards: cardCount };
     });
@@ -93,6 +116,7 @@ function buildBatchList(data) {
                 deck: meta.deck || '未分類',
                 seg: Number.isInteger(meta.seg) ? meta.seg : null,
                 exam: Number.isInteger(meta.exam) ? meta.exam : null,
+                category: meta.category || '課文生字',
                 cards: s.cards
             });
         });
@@ -107,6 +131,7 @@ function buildBatchList(data) {
                 deck: '未分類',
                 seg: null,
                 exam: null,
+                category: '課文生字',
                 cards: stats[key].cards
             });
         }
@@ -120,6 +145,22 @@ function formatBatchLabel(b) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b.key);
     if (m) return `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日`;
     return b.label || b.key;
+}
+
+// 分类排序：課文生字 → Phrases → MPC → 其他（同級按名称）
+const CATEGORY_ORDER = ['課文生字', 'Phrases', 'MPC'];
+
+function categoryRank(category) {
+    const i = CATEGORY_ORDER.indexOf(category);
+    return i < 0 ? CATEGORY_ORDER.length : i;
+}
+
+function sortCategories(list) {
+    return [...new Set(list.filter(Boolean))].sort((a, b) => {
+        const diff = categoryRank(a) - categoryRank(b);
+        if (diff) return diff;
+        return a < b ? -1 : a > b ? 1 : 0;
+    });
 }
 
 // 生成层级下拉框的选项描述列表：[{ value, label, group }]
@@ -152,6 +193,16 @@ function buildDateOptions(batchList) {
 
             [...new Set(segList.map(b => b.exam).filter(e => e !== null))].sort((a, b) => a - b).forEach(exam => {
                 groupOptions.push({ value: `exam|${enc}|${seg}|${exam}`, label: `第${seg}段・第${exam}次大測` });
+                // 同一大測可能有多個分類（課文生字 / Phrases / MPC）；每個分類也要能被持久化選中
+                const categories = sortCategories(
+                    segList.filter(b => b.exam === exam).map(b => b.category)
+                );
+                categories.forEach(category => {
+                    groupOptions.push({
+                        value: `cat|${enc}|${seg}|${exam}|${encodeURIComponent(category)}`,
+                        label: `第${seg}段・第${exam}次大測・${category}`
+                    });
+                });
             });
         });
 
@@ -165,28 +216,30 @@ function buildDateOptions(batchList) {
     return options;
 }
 
-// 解析 deck|/seg|/exam| 过滤值 → 命中的批次键集合
+// 解析 deck|/seg|/exam|/cat| 过滤值 → 命中的批次键集合
 function resolveBatchKeys(value, batchList) {
     const parts = value.split('|');
     const kind = parts[0];
     const deck = decodeURIComponent(parts[1] || '');
     const seg = parseInt(parts[2], 10);
     const exam = parseInt(parts[3], 10);
+    const category = parts[4] ? decodeURIComponent(parts[4]) : '';
     const keys = new Set();
     batchList.forEach(b => {
         if (b.deck !== deck) return;
-        if ((kind === 'seg' || kind === 'exam') && b.seg !== seg) return;
-        if (kind === 'exam' && b.exam !== exam) return;
+        if ((kind === 'seg' || kind === 'exam' || kind === 'cat') && b.seg !== seg) return;
+        if ((kind === 'exam' || kind === 'cat') && b.exam !== exam) return;
+        if (kind === 'cat' && b.category !== category) return;
         keys.add(b.key);
     });
     return keys;
 }
 
-// 按选中的过滤值返回单词池（custom/all/deck/seg/exam/具体批次）
+// 按选中的过滤值返回单词池（custom/all/deck/seg/exam/cat/具体批次）
 function filterBySelection(selectedDate, vocab, batchList, legacyDateMapping) {
     if (selectedDate === 'custom') return vocab.filter(v => v.id < 0);
     if (!selectedDate || selectedDate === 'all') return vocab;
-    if (selectedDate.startsWith('deck|') || selectedDate.startsWith('seg|') || selectedDate.startsWith('exam|')) {
+    if (selectedDate.startsWith('deck|') || selectedDate.startsWith('seg|') || selectedDate.startsWith('exam|') || selectedDate.startsWith('cat|')) {
         const keys = resolveBatchKeys(selectedDate, batchList);
         return keys.size ? vocab.filter(v => keys.has(v.date)) : [];
     }
@@ -204,7 +257,7 @@ function filterBySelection(selectedDate, vocab, batchList, legacyDateMapping) {
 function batchCardsFor(value) {
     if (value === 'all') return batches.reduce((s, b) => s + (b.cards || 0), 0);
     if (value === 'custom') return null;
-    const keys = /^(deck|seg|exam)\|/.test(value) ? [...resolveBatchKeys(value, batches)] : [value];
+    const keys = /^(deck|seg|exam|cat)\|/.test(value) ? [...resolveBatchKeys(value, batches)] : [value];
     return keys.reduce((s, k) => {
         const b = batches.find(x => x.key === k);
         return s + (b ? (b.cards || 0) : 0);
@@ -212,7 +265,8 @@ function batchCardsFor(value) {
 }
 
 // 菜单树：第 1 层 自定义词汇 / 全部 / 各 deck；
-// deck 内 → deck（全部）+ 第n段 + 日期批次；段内 → 第n段（全部）+ 各大測
+// deck 内 → deck（全部）+ 第n段 + 日期批次；段内 → 第n段（全部）+ 各大測；
+// 同一大測有多個分類時 → 大測（全部）+ 課文生字 / Phrases / MPC。
 function buildBatchMenuTree() {
     const deckOrder = [];
     const byDeck = {};
@@ -221,8 +275,12 @@ function buildBatchMenuTree() {
         const d = byDeck[b.deck];
         if (b.seg != null) {
             let s = d.segs.find(x => x.seg === b.seg);
-            if (!s) { s = { seg: b.seg, examNos: [] }; d.segs.push(s); }
-            if (b.exam != null && s.examNos.indexOf(b.exam) < 0) s.examNos.push(b.exam);
+            if (!s) { s = { seg: b.seg, exams: [] }; d.segs.push(s); }
+            if (b.exam != null) {
+                let e = s.exams.find(x => x.no === b.exam);
+                if (!e) { e = { no: b.exam, categories: [] }; s.exams.push(e); }
+                if (b.category && e.categories.indexOf(b.category) < 0) e.categories.push(b.category);
+            }
         } else {
             d.dates.push({ leaf: true, value: b.key, label: formatBatchLabel(b) });
         }
@@ -237,18 +295,36 @@ function buildBatchMenuTree() {
         const enc = d.enc;
         const children = [{ leaf: true, value: `deck|${enc}`, label: `${deck}（全部）` }];
         d.segs.sort((a, b) => a.seg - b.seg).forEach(s => {
-            const nos = s.examNos.sort((a, b) => a - b);
-            if (nos.length) {
-                // 段一层 → 段汇总 + 各大測（名称与旧下拉一致）
+            const exams = s.exams.sort((a, b) => a.no - b.no);
+            if (exams.length) {
+                const examNodes = exams.map(e => {
+                    const categories = sortCategories(e.categories);
+                    const value = `exam|${enc}|${s.seg}|${e.no}`;
+                    if (categories.length > 1) {
+                        // 大測內再分課文生字 / Phrases / MPC
+                        return {
+                            leaf: false, label: `第${e.no}次大測`,
+                            children: [
+                                { leaf: true, value: value, label: '全部' },
+                                ...categories.map(category => ({
+                                    leaf: true,
+                                    value: `cat|${enc}|${s.seg}|${e.no}|${encodeURIComponent(category)}`,
+                                    label: category
+                                }))
+                            ]
+                        };
+                    }
+                    if (categories.length === 1) {
+                        return { leaf: true, value: value, label: `第${e.no}次大測（${categories[0]}）` };
+                    }
+                    return { leaf: true, value: value, label: `第${s.seg}段・第${e.no}次大測` };
+                });
+                // 段一层 → 段汇总 + 各大測
                 children.push({
                     leaf: false, label: `第${s.seg}段`,
                     children: [
                         { leaf: true, value: `seg|${enc}|${s.seg}`, label: `第${s.seg}段（全部）` },
-                        ...nos.map(no => ({
-                            leaf: true,
-                            value: `exam|${enc}|${s.seg}|${no}`,
-                            label: `第${s.seg}段・第${no}次大測`
-                        }))
+                        ...examNodes
                     ]
                 });
             } else {
@@ -883,16 +959,49 @@ function initApp() {
             set.add(optionType === 'chinese' ? v.chinese : v.word);
         });
         set.delete(correctAnswer);
-        if (optionType === 'english' && currentWordIndex !== null) {
-            // 删除当前单词的同义词，避免在选项中出现
-            const currentWord = vocabulary[currentWordIndex];
-            if (currentWord.synonym) {
-                set.delete(currentWord.synonym);
+
+        let wrongs;
+        if (optionType === 'english') {
+            const currentWord = currentWordIndex !== null ? vocabulary[currentWordIndex] : null;
+            // 排除当前词的同义词/同组变体，并保证同一 id 的 a/b/alts 最多只出现一个
+            const bannedWords = new Set();
+            const bannedIds = new Set();
+            if (currentWord) {
+                if (currentWord.synonym) bannedWords.add(currentWord.synonym);
+                if (typeof currentWord.id === 'number') bannedIds.add(currentWord.id);
+                (currentWord.synonymIndices || []).forEach(si => {
+                    const sibling = vocabulary[si];
+                    if (!sibling) return;
+                    if (sibling.word) bannedWords.add(sibling.word);
+                    if (typeof sibling.id === 'number') bannedIds.add(sibling.id);
+                });
             }
-            // 也删除通过同义词关系关联的单词
-            (currentWord.synonymIndices || []).forEach(si => set.delete(vocabulary[si].word));
+
+            const candidates = [];
+            const seenWords = new Set();
+            avail.forEach(idx => {
+                const v = vocabulary[idx];
+                if (!v || !v.word || v.word === correctAnswer || seenWords.has(v.word)) return;
+                if (bannedWords.has(v.word)) return;
+                if (typeof v.id === 'number' && bannedIds.has(v.id)) return;
+                seenWords.add(v.word);
+                candidates.push(v);
+            });
+            candidates.sort(() => Math.random() - 0.5);
+
+            const usedIds = new Set();
+            wrongs = [];
+            for (const v of candidates) {
+                if (wrongs.length >= 3) break;
+                if (typeof v.id === 'number') {
+                    if (usedIds.has(v.id)) continue;
+                    usedIds.add(v.id);
+                }
+                wrongs.push(v.word);
+            }
+        } else {
+            wrongs = [...set].sort(() => Math.random() - 0.5).slice(0, 3);
         }
-        const wrongs = [...set].sort(() => Math.random() - 0.5).slice(0, 3);
         while (wrongs.length < 3) wrongs.push('(其他选项)');
         return [...wrongs, correctAnswer].sort(() => Math.random() - 0.5);
     }

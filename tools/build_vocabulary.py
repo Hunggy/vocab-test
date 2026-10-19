@@ -19,9 +19,11 @@
   `seg` / `exam` 可由欄位或檔名（`seg2_exam3_...`、`第2段第3次...`）指定，
   只有一邊時另一邊補 1 並警告。`label` 未給時自動產生 `第{seg}段・第{exam}次大測`，
   沒有 seg/exam 則用檔名。
-- 一列一組：word、chinese 必填；synonym 有值 → 產生 a/b 兩張卡（共用 id），
-  否則只產生 a 一張卡（不輸出 b 欄位）。
-- id 以現有 vocabulary.json 的 (批次, a, b) 為準重複使用；新條目從現有最大 id + 1
+- 一列一組：word、chinese 必填；synonym 用 `;`／`；` 分隔多個同義詞，
+  第一個進 `b`、其餘進 `alts`（陣列）；每列產生 1 + 同義詞數 張卡（共用 id）。
+- `category` 欄位（課文生字 / Phrases / MPC…）寫入批次 metadata；沒有欄位時依檔名
+  （含 phrase → Phrases、含 mpc → MPC）否則預設 `課文生字`。
+- id 以現有 vocabulary.json 的 (批次, a, 同義詞組) 為準重複使用；新條目從現有最大 id + 1
   開始，依檔案／列順序遞增。
 - 輸出頂層 `batches`（批次 metadata）與 `groups`（單字卡）。
 """
@@ -64,7 +66,10 @@ ALIASES = {
     "seg": {"seg", "segment", "段", "第几段", "第幾段"},
     "exam": {"exam", "次", "第几次", "第幾次", "大测", "大測"},
     "label": {"label", "名称", "名稱", "批次名", "显示名", "顯示名"},
+    "category": {"category", "type", "類型", "类型", "種類", "种类", "詞類", "词类"},
 }
+
+CATEGORY_ORDER = ("課文生字", "Phrases", "MPC")
 
 # 檔名裡的 seg/exam（日期檔名如 2026-05-09 不會誤中）
 SEG_PATTERNS = (
@@ -130,7 +135,7 @@ def decode_file(path: Path, reporter: Reporter) -> str | None:
 
 
 def load_existing() -> tuple[dict[tuple[str, str, str], int], int]:
-    """讀現有 vocabulary.json → ((批次, a, b) → id, 最大 id)。"""
+    """讀現有 vocabulary.json → ((批次, a, 同義詞組) → id, 最大 id)。"""
     if not VOCAB_PATH.is_file():
         return {}, 0
     try:
@@ -155,7 +160,14 @@ def load_existing() -> tuple[dict[tuple[str, str, str], int], int]:
             if not isinstance(entry_id, int) or not isinstance(a, str):
                 continue
             b = entry.get("b") if isinstance(entry.get("b"), str) else ""
-            key = (str(batch), a, b)
+            raw_alts = entry.get("alts")
+            alts = (
+                [alt for alt in raw_alts if isinstance(alt, str)]
+                if isinstance(raw_alts, list)
+                else []
+            )
+            variants = ([b] if b else []) + alts
+            key = (str(batch), a, ";".join(variants))
             existing.setdefault(key, entry_id)
             max_id = max(max_id, entry_id)
     return existing, max_id
@@ -207,6 +219,35 @@ def parse_filename_level(stem: str, patterns: tuple[re.Pattern, ...]) -> int | N
 def filename_deck(rel: Path) -> str:
     """檔名／路徑含「上年」→ 上年英語班生字，否則預設本年度課程。"""
     return LEGACY_DECK if "上年" in rel.as_posix() else DEFAULT_DECK
+
+
+def default_category(rel: Path) -> str:
+    """沒有 category 欄位時依檔名推測；預設課文生字。"""
+    stem = rel.stem.casefold()
+    if "phrase" in stem:
+        return "Phrases"
+    if "mpc" in stem:
+        return "MPC"
+    return "課文生字"
+
+
+def parse_synonyms(raw: str) -> list[str]:
+    """把 synonym 欄位拆成去重後的變體清單（`;`／`；` 分隔）。"""
+    seen: set[str] = set()
+    result: list[str] = []
+    for part in re.split(r"[;；]", raw or ""):
+        text = part.strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
+
+
+def category_rank(category: str) -> tuple[int, str]:
+    """課文生字 → Phrases → MPC → 其他（同級依名稱）。"""
+    if category in CATEGORY_ORDER:
+        return (CATEGORY_ORDER.index(category), "")
+    return (len(CATEGORY_ORDER), category)
 
 
 def collect_values(
@@ -266,6 +307,7 @@ def file_metadata(
     """由欄位 + 檔名算出這一個 CSV（一次大測）的批次 metadata。"""
     deck_cell, deck_conflict = collect_values(rows, index, "deck")
     label_cell, label_conflict = collect_values(rows, index, "label")
+    category_cell, category_conflict = collect_values(rows, index, "category")
     seg_cell, seg_conflict = collect_level(rows, index, "seg", path, reporter)
     exam_cell, exam_conflict = collect_level(rows, index, "exam", path, reporter)
 
@@ -286,6 +328,7 @@ def file_metadata(
             )
 
     deck = deck_cell or filename_deck(rel)
+    category = category_cell or default_category(rel)
 
     if deck != LEGACY_DECK and seg is None and exam is None:
         reporter.warn(
@@ -300,6 +343,7 @@ def file_metadata(
             ("seg", seg_conflict),
             ("exam", exam_conflict),
             ("label", label_conflict),
+            ("category", category_conflict),
         )
         if flag
     ]
@@ -316,7 +360,7 @@ def file_metadata(
     else:
         label = rel.stem
 
-    meta: dict = {"key": rel.stem, "label": label, "deck": deck}
+    meta: dict = {"key": rel.stem, "label": label, "deck": deck, "category": category}
     if seg is not None:
         meta["seg"] = seg
     if exam is not None:
@@ -407,7 +451,9 @@ def build(reporter: Reporter) -> tuple[dict[str, list[dict]], dict[str, dict], d
                 continue
 
             batch = cell(row, index, "batch") or default_batch
-            synonym = cell(row, index, "b")
+            synonyms = parse_synonyms(cell(row, index, "b"))
+            synonym = synonyms[0] if synonyms else ""
+            alts = synonyms[1:]
             example = cell(row, index, "ex")
             example_cn = cell(row, index, "cn")
 
@@ -419,11 +465,11 @@ def build(reporter: Reporter) -> tuple[dict[str, list[dict]], dict[str, dict], d
                     batch_meta["label"] = batch
                 batches[batch] = batch_meta
 
-            pair_key = (batch, word, synonym)
+            pair_key = (batch, word, ";".join(synonyms))
             if pair_key in seen_keys:
                 reporter.warn(
                     f"{display_path(path)}:{line_no}: duplicate pair "
-                    f"({word!r}, {synonym!r}) in batch {batch!r}; skipped"
+                    f"({word!r}, {';'.join(synonyms)!r}) in batch {batch!r}; skipped"
                 )
                 continue
             seen_keys.add(pair_key)
@@ -437,6 +483,8 @@ def build(reporter: Reporter) -> tuple[dict[str, list[dict]], dict[str, dict], d
             entry: dict = {"id": entry_id, "a": word}
             if synonym:
                 entry["b"] = synonym
+            if alts:
+                entry["alts"] = alts
             entry["ch"] = chinese
             if example:
                 entry["ex"] = example
@@ -445,7 +493,7 @@ def build(reporter: Reporter) -> tuple[dict[str, list[dict]], dict[str, dict], d
 
             groups.setdefault(batch, []).append(entry)
             stats["pairs"] += 1
-            stats["cards"] += 2 if synonym else 1
+            stats["cards"] += 1 + len(synonyms)
 
             # 跨批次重複的 a（同批次不警告）
             previous_batches = seen_a.setdefault(word, set())
@@ -463,13 +511,14 @@ def build(reporter: Reporter) -> tuple[dict[str, list[dict]], dict[str, dict], d
             previous_batches.add(batch)
 
             if not example:
-                reporter.warn(
-                    f"{display_path(path)}:{line_no}: missing example for {word!r}"
-                )
+                if meta["category"] != "Phrases":
+                    reporter.warn(
+                        f"{display_path(path)}:{line_no}: missing example for {word!r}"
+                    )
             else:
                 lowered = example.lower()
-                if word.lower() not in lowered and (
-                    not synonym or synonym.lower() not in lowered
+                if word.lower() not in lowered and not any(
+                    variant.lower() in lowered for variant in synonyms
                 ):
                     reporter.warn(
                         f"{display_path(path)}:{line_no}: example for {word!r} "
@@ -480,21 +529,34 @@ def build(reporter: Reporter) -> tuple[dict[str, list[dict]], dict[str, dict], d
 
 
 def batch_sort_key(batch: dict) -> tuple:
-    """非 legacy 牌組在前（deck, seg, exam, key），legacy 牌組最後（依 key）。"""
+    """非 legacy 牌組在前（deck, seg, exam, category, key），legacy 牌組最後（依 key）。"""
     key = batch["key"]
     deck = batch["deck"]
     if deck == LEGACY_DECK:
-        return (1, "", 0, 0, key)
-    return (0, deck, batch.get("seg", 0), batch.get("exam", 0), key)
+        return (1, "", 0, 0, (0, ""), "", key)
+    category = batch.get("category", "")
+    return (
+        0,
+        deck,
+        batch.get("seg", 0),
+        batch.get("exam", 0),
+        category_rank(category),
+        category,
+        key,
+    )
 
 
 def ordered_batches(batches: dict[str, dict]) -> list[dict]:
     return sorted(batches.values(), key=batch_sort_key)
 
 
-def render(batches: list[dict], groups: dict[str, list[dict]]) -> str:
+def render(
+    batches: list[dict],
+    groups: dict[str, list[dict]],
+    group_order: list[str] | None = None,
+) -> str:
     lines = ["{", '  "batches": [']
-    fields = ("key", "label", "deck", "seg", "exam")
+    fields = ("key", "label", "deck", "seg", "exam", "category")
     for batch_index, batch in enumerate(batches):
         entry = {field: batch[field] for field in fields if field in batch}
         comma = "," if batch_index < len(batches) - 1 else ""
@@ -503,7 +565,9 @@ def render(batches: list[dict], groups: dict[str, list[dict]]) -> str:
         )
     lines.append("  ],")
     lines.append('  "groups": {')
-    keys = sorted(groups)
+    # 先沿用舊檔的群組順序（保住既有 _idx 學習進度），新群組才追加在後面。
+    keys = [key for key in (group_order or []) if key in groups]
+    keys.extend(sorted(key for key in groups if key not in keys))
     for group_index, key in enumerate(keys):
         lines.append(f"    {json.dumps(key, ensure_ascii=False)}: [")
         entries = groups[key]
@@ -518,7 +582,7 @@ def render(batches: list[dict], groups: dict[str, list[dict]]) -> str:
 
 
 def normalize_batches(raw) -> list[dict] | None:
-    """正規化 batches：只保留 key/label/deck/seg/exam 非空欄位。"""
+    """正規化 batches：只保留 key/label/deck/seg/exam/category 非空欄位。"""
     if not isinstance(raw, dict):
         return None
     batches = raw.get("batches")
@@ -530,7 +594,7 @@ def normalize_batches(raw) -> list[dict] | None:
         if not isinstance(batch, dict):
             return None
         normalized: dict = {}
-        for field in ("key", "label", "deck", "seg", "exam"):
+        for field in ("key", "label", "deck", "seg", "exam", "category"):
             value = batch.get(field)
             if value not in ("", None):
                 normalized[field] = value
@@ -555,13 +619,25 @@ def normalize_for_compare(raw) -> dict[str, list[dict]] | None:
             if not isinstance(entry, dict):
                 return None
             normalized: dict = {}
-            for field in ("id", "a", "b", "ch", "ex", "cn"):
+            for field in ("id", "a", "b", "alts", "ch", "ex", "cn"):
                 value = entry.get(field)
                 if value not in ("", None):
                     normalized[field] = value
             normalized_entries.append(normalized)
         result[str(key)] = normalized_entries
     return result
+
+
+def existing_group_order() -> list[str]:
+    """讀現有 vocabulary.json 的 groups 順序，讓重建時既有 _idx 不位移。"""
+    if not VOCAB_PATH.is_file():
+        return []
+    try:
+        raw = json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    groups = raw.get("groups") if isinstance(raw, dict) else None
+    return [str(key) for key in groups] if isinstance(groups, dict) else []
 
 
 def current_content() -> tuple[list[dict] | None, dict[str, list[dict]] | None] | None:
@@ -596,6 +672,8 @@ def print_show(batches: dict[str, dict], groups: dict[str, list[dict]], limit: i
                 f" seg{info['seg']}/exam{info['exam']}" if "seg" in info else ""
             )
             tag = f"[{info['deck']}{level}] "
+            if info.get("category"):
+                tag = f"[{info['deck']}{level}・{info['category']}] "
         for entry in groups[batch]:
             if limit >= 0 and shown >= limit:
                 return
@@ -671,7 +749,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return 1 if args.strict and reporter.count else 0
 
-    VOCAB_PATH.write_text(render(batch_list, groups), encoding="utf-8", newline="\n")
+    VOCAB_PATH.write_text(
+        render(batch_list, groups, existing_group_order()),
+        encoding="utf-8",
+        newline="\n",
+    )
     print_summary(stats, reporter.count)
     if args.strict and reporter.count:
         return 1
