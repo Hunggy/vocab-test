@@ -1,5 +1,7 @@
 {
   "batches": [
+    {"key":"seg1_exam2_unit3", "label":"第1段・第2次大測", "deck":"本年度課程", "seg":1, "exam":2},
+    {"key":"seg1_exam2_unit4", "label":"第1段・第2次大測", "deck":"本年度課程", "seg":1, "exam":2},
     {"key":"2026-05-09", "label":"2026-05-09", "deck":"上年英語班生字"},
     {"key":"2026-05-16", "label":"2026-05-16", "deck":"上年英語班生字"},
     {"key":"2026-05-23", "label":"2026-05-23", "deck":"上年英語班生字"},
@@ -259,6 +261,42 @@
       {"id":318, "a":"diminish", "b":"decrease", "ch":"減少", "ex":"The noise began to diminish as the car drove away.", "cn":"隨著汽車開走，噪音開始減少。"},
       {"id":319, "a":"discrepancy", "b":"inconsistency", "ch":"差異", "ex":"There is a discrepancy in the two reports.", "cn":"這兩份報告存在差異。"},
       {"id":320, "a":"disperse", "b":"scatter", "ch":"分散", "ex":"The police used water cannons to disperse the crowd.", "cn":"警察使用高壓水炮來分散人群。"}
+    ],
+    "seg1_exam2_unit3": [
+      {"id":333, "a":"futuristic", "ch":"超前的、未来的", "ex":"Self-driving cars look futuristic.", "cn":"自动驾驶汽车看起来很前卫。"},
+      {"id":334, "a":"revolutionize", "ch":"革命性变革", "ex":"Self-driving cars may revolutionize transportation.", "cn":"自动驾驶汽车可能彻底改变交通。"},
+      {"id":335, "a":"navigate", "ch":"导航", "ex":"The car can navigate the streets by itself.", "cn":"汽车可以自行在街道上导航。"},
+      {"id":336, "a":"ethic", "ch":"道德准则", "ex":"Safety is a basic ethic in the car industry.", "cn":"安全是汽车行业的基本道德准则。"},
+      {"id":337, "a":"distract", "ch":"使分心", "ex":"Phones can distract drivers on the road.", "cn":"手机会让路上的司机分心。"},
+      {"id":338, "a":"approximately", "ch":"大约", "ex":"The trip takes approximately 30 minutes.", "cn":"这趟行程大约需要30分钟。"},
+      {"id":339, "a":"eliminate", "ch":"消除", "ex":"New technology may eliminate traffic jams.", "cn":"新技术可能消除交通堵塞。"},
+      {"id":340, "a":"optimize", "ch":"优化；使完善", "ex":"We can optimize the route to save time.", "cn":"我们可以优化路线以节省时间。"},
+      {"id":341, "a":"congestion", "ch":"堵塞（尤指交通）", "ex":"Traffic congestion is serious in rush hour.", "cn":"高峰时段交通堵塞很严重。"},
+      {"id":342, "a":"emission", "ch":"排放", "ex":"Electric cars produce less emission.", "cn":"电动汽车排放更少。"},
+      {"id":343, "a":"accessibility", "ch":"可达性；易接近性", "ex":"The app improves accessibility for all users.", "cn":"这个应用提高了所有用户的可达性。"},
+      {"id":344, "a":"dominate", "ch":"支配", "ex":"One company may dominate the market.", "cn":"一家公司可能支配市场。"},
+      {"id":345, "a":"dilemma", "ch":"困境；两难境地", "ex":"Drivers face a dilemma in an emergency.", "cn":"司机在紧急情况下会面临两难境地。"},
+      {"id":346, "a":"prioritize", "ch":"优先处理", "ex":"We must prioritize safety first.", "cn":"我们必须优先处理安全。"},
+      {"id":347, "a":"transition", "ch":"过渡；转变", "ex":"The transition to self-driving cars takes time.", "cn":"向自动驾驶汽车的过渡需要时间。"},
+      {"id":348, "a":"hurdle", "ch":"障碍；难关", "ex":"Cost is a big hurdle for this technology.", "cn":"成本是这项技术的一大障碍。"},
+      {"id":349, "a":"commute", "ch":"通勤（上下班往返）", "ex":"Many people commute to work every day.", "cn":"很多人每天通勤上班。"},
+      {"id":350, "a":"momentum", "ch":"动力", "ex":"The project is gaining momentum.", "cn":"这个项目正在获得动力。"},
+      {"id":351, "a":"equitable", "ch":"公平的", "ex":"Everyone needs equitable access to transport.", "cn":"每个人都需要公平的交通机会。"},
+      {"id":352, "a":"innovation", "ch":"创新；革新", "ex":"This car is a great innovation.", "cn":"这辆车是一项伟大的创新。"}
+    ],
+    "seg1_exam2_unit4": [
+      {"id":353, "a":"execute", "ch":"实施", "ex":"The system can execute tasks quickly.", "cn":"系统可以快速实施任务。"},
+      {"id":354, "a":"enhance", "ch":"增加", "ex":"New features enhance the driving experience.", "cn":"新功能增强了驾驶体验。"},
+      {"id":355, "a":"hazard", "ch":"危险物", "ex":"Ice on the road is a hazard.", "cn":"路面结冰是危险物。"},
+      {"id":356, "a":"intricate", "ch":"错综复杂的", "ex":"The engine has an intricate design.", "cn":"发动机有错综复杂的设计。"},
+      {"id":357, "a":"customize", "ch":"订制", "ex":"You can customize the settings.", "cn":"你可以定制设置。"},
+      {"id":358, "a":"safeguard", "ch":"保护", "ex":"Laws safeguard the rights of passengers.", "cn":"法律保护乘客的权利。"},
+      {"id":359, "a":"accountability", "ch":"问责", "ex":"Companies must have accountability for accidents.", "cn":"公司必须对事故负责。"},
+      {"id":360, "a":"autonomy", "ch":"自主", "ex":"The car has full autonomy on highways.", "cn":"汽车在高速公路上有完全的自主性。"},
+      {"id":361, "a":"bias", "ch":"偏见", "ex":"The system should avoid bias.", "cn":"系统应避免偏见。"},
+      {"id":362, "a":"mimic", "ch":"模仿", "ex":"Robots can mimic human movements.", "cn":"机器人可以模仿人类动作。"},
+      {"id":363, "a":"diversity", "ch":"多样化", "ex":"The city needs diversity in transport.", "cn":"城市需要多样化的交通。"},
+      {"id":364, "a":"transparent", "ch":"清晰易懂的", "ex":"The system should be transparent to users.", "cn":"系统对用户应清晰易懂。"}
     ]
   }
 }
