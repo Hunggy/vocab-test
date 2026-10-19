@@ -100,6 +100,7 @@ npx serve .
 - 只改 CSV / 词库时**不用**改 `VERSION`：`vocabulary.json` 走 network-first，联网刷新就会拿到新词；离线时回退缓存。
 - 离线缓存里的旧词库要更新，联网打开一次即可。
 - 图标由 `icons/source.png`（AI 生成后裁掉角落水印的成品图）经 `python tools/make_icons.py` 生成三个尺寸；改图标只需替换 `source.png` 后重跑脚本。
+- `manifest.webmanifest` 里的 `id` 固定为 `/vocab-test/`：这样和同一域名的中文站（`/chinese-review/`）是两个独立 App，Android 上可以同时安装。
 
 ---
 
