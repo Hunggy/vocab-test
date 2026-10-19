@@ -5,7 +5,7 @@
 > 🌐 在线地址：**https://hunggy.github.io/vocab-test/**
 > 仓库地址：https://github.com/Hunggy/vocab-test
 
-内置 **240 组词（480 个单词）**，按每周一批划分，每组都配有英文例句与中文翻译，主打「每周背一组、一两天速通」的突击式复习。
+内置 **240 组词（480 个单词）**，属于「上年英語班生字」，按每周一批划分；之后新增的 CSV 可按「第几段・第几次大测」归入本年度课程。每组都配有英文例句与中文翻译，主打「每周背一组、一两天速通」的突击式复习。
 
 ---
 
@@ -46,12 +46,14 @@
 - 此模式下速通和题型切换会临时禁用（两者逻辑不兼容），⭐ 难词标记、🔪 斩词、🔊 发音照常可用
 
 ### 其他
-- **范围筛选**：按日期批次（6 组）或「全部」，也可只刷前一半 / 后一半 / 错题 / 难词 / **🃏 翻卡自测**
+- **范围筛选（分层下拉）**：`📥 自定义词汇` / `全部` → 大分类（`上年英語班生字`、`本年度課程`）→ `第N段` → `第N段・第M次大測` → 具体批次；也可只刷前一半 / 后一半 / 错题 / 难词 / **🃏 翻卡自测**
+- **旧词独立**：现有 480 个「上年英語班生字」单独归为一类，仍可按 5/9、5/16… 日期小批次刷，不会和本年度课程混在一起
 - **📖 单词浏览**：卡片列表 + 实时搜索（支持英文或中文），同义词合并展示且各自带发音按钮；**速通模式下也能随时打开查词**，打开时会暂停自动跳题，点「返回速通」继续（Esc 同样可退出）
 - **🔊 发音**：基于 Web Speech API 的朗读，支持「自动发音」开关（英文选中文模式下自动朗读，不泄露答案）
 - **进度导出 / 导入**：JSON 备份学习进度，跨设备或换浏览器可恢复
 - **CSV 导入词库**：随时导入自己的单词表（导入后选择「📥 自定义词汇」）
 - 🌙 深色模式、A-/A+ 字号调节，所有偏好自动记忆
+- **📲 离线 PWA**：首次联网打开后自动缓存，断网也能刷；手机可「加到主屏幕」，像 App 一样全屏使用
 - **📄 例句** 开关（顶部功能栏）：一键隐藏答题卡片上的英文例句与例句翻译，**只留单词本身自测**，避免例句里的上下文把答案提示出来。隐藏状态会记在进度里，刷新后保持；📖 浏览单词的例句不受影响（那个页面本来就是用来查的）
 
 ### 快捷键
@@ -78,41 +80,68 @@ npx serve .
 
 然后访问 http://localhost:8000 。
 
+> Service Worker 只在 `http://` / `https://` 下注册；`127.0.0.1` / `localhost` 也算安全来源，所以本地也能测离线。
+
+---
+
+## 📲 离线 PWA / 加到主屏幕
+
+首次用 http/https 打开后，Service Worker 会把页面、样式、脚本、词库和图标缓存起来；之后断网也能继续刷，学习进度仍然只存在本地。
+
+**加到主屏幕：**
+
+- **iPhone / iPad（Safari）**：分享 → 「加入主画面」
+- **Android（Chrome）**：右上菜单 → 「安装应用 / 加到主屏幕」
+- **桌面 Chrome / Edge**：地址栏右侧的安装图标
+
+**发版注意：**
+
+- 改了 `script.js` / `style.css` / 图标后，记得把 `sw.js` 顶部的 `VERSION` 改一下（例如 `vocab-test-2026-10-19.2` → `vocab-test-2026-10-20.1`），否则旧缓存可能不会更新。
+- 只改 CSV / 词库时**不用**改 `VERSION`：`vocabulary.json` 走 network-first，联网刷新就会拿到新词；离线时回退缓存。
+- 离线缓存里的旧词库要更新，联网打开一次即可。
+
 ---
 
 ## 📁 项目结构
 
 ```
-index.html          # 页面结构（含日期 / 模式 / 题型的下拉选项）
-style.css           # 样式与主题变量（浅色 / 深色）
-script.js           # 全部交互逻辑、复习队列、发音、导入导出
-vocabulary.json     # 词库（网页唯一读取的数据源）
+index.html                 # 页面结构（批次下拉框由 JS 动态生成）
+style.css                  # 样式与主题变量（浅色 / 深色）
+script.js                  # 全部交互逻辑、复习队列、发音、导入导出 + SW 注册
+vocabulary.json            # 词库（由 CSV 生成，勿手改；网页唯一读取的数据源）
+manifest.webmanifest       # PWA 设置（名称、图标、主题色）
+sw.js                      # Service Worker（离线缓存；发版要改 VERSION）
+icons/icon-*.png           # 主屏幕图标（192 / 512 / maskable）
+.nojekyll                  # 让 GitHub Pages 原样提供文件
+tools/build_vocabulary.py  # CSV → vocabulary.json 生成器
+build.bat / build.ps1      # 双击 build.bat 即可重建（自动找 Python）
+data/source/*.csv          # 内置词库来源（每批一个 CSV）
+source/                    # 自己放新 CSV 的目录（同名文件优先于 data/source/）
 ```
+
+> 批次下拉框现在完全由 `vocabulary.json` 的 `batches` 元数据生成：**「上年英語班生字」与「本年度課程」分开**，本年度再按「第几段 → 第几次大测」分层。新增 CSV 重建后会自动出现，**不需要再改 `index.html` 或 `script.js`**。
 
 仓库里另有历史遗留的文件，网页运行时**不会用到**它们：
 
 - `review.py` / `deepseek.py`：早期的 Python tkinter 桌面版原型
-- `*.csv`：整理词库时的原始单词表素材
+- `archive/source-csv/*.csv`：整理词库时的原始单词表素材（网页不会读取）
 - `vocab_config.json`：桌面版的进度存档格式
 
 ---
 
 ## 📚 词库说明
 
-`vocabulary.json` 的结构如下：
+`vocabulary.json` 是**由 CSV 生成的产物，不要手改**（重建会覆盖）。结构如下：
 
 ```json
 {
+  "batches": [
+    {"key":"2026-05-09", "label":"2026-05-09", "deck":"上年英語班生字"},
+    {"key":"seg1_exam1_unit1", "label":"第1段・第1次大測", "deck":"本年度課程", "seg":1, "exam":1}
+  ],
   "groups": {
     "2026-05-09": [
-      {
-        "id": 81,
-        "a": "evoke",
-        "b": "elicit",
-        "ch": "唤起",
-        "ex": "The smell of fresh bread evokes happy memories of my grandmother's kitchen.",
-        "cn": "新鮮麵包的香味喚起了我對祖母廚房的美好回憶。"
-      }
+      {"id": 81, "a": "evoke", "b": "elicit", "ch": "唤起", "ex": "The smell ...", "cn": "新鮮麵包..."}
     ]
   }
 }
@@ -120,24 +149,83 @@ vocabulary.json     # 词库（网页唯一读取的数据源）
 
 | 字段 | 含义 |
 | --- | --- |
-| `id` | 组内编号，**同义词对共享同一个 id**（浏览模式据此合并卡片）|
-| `a` / `b` | 一组同义词/近义词，会被展开成两张独立单词卡 |
-| `ch` | 中文释义 |
-| `ex` / `cn` | 英文例句 / 中文翻译 |
+| `batches[].key` | 批次键（= CSV 文件名），`groups` 用同一个键 |
+| `batches[].deck` | 大分类：`上年英語班生字` / `本年度課程`（或 CSV 里自定义的名称）|
+| `batches[].seg` / `exam` | 第几段 / 该段第几次大测；旧词批次可缺省 |
+| `batches[].label` | 下拉框显示名；未填时自动生成「第N段・第M次大測」或文件名 |
+| `groups[].id` | 组内编号，**同义词对共享同一个 id**（浏览模式据此合并卡片）|
+| `groups[].a` / `b` | 一组同义词/近义词，会被展开成两张独立单词卡；没有 `b` 时就是单卡 |
+| `groups[].ch` | 中文释义 |
+| `groups[].ex` / `cn` | 英文例句 / 中文翻译（可缺省）|
 
-现有批次：5/9、5/16、5/23、5/30、6/6、6/20，**每组 40 组同义词（80 张卡），编号 81–320，共 240 组 / 480 词**。
+现有 480 词属于 **`上年英語班生字`** 分类，仍保留 5/9、5/16、5/23、5/30、6/6、6/20 六个日期小批次（每组 40 组同义词 / 80 张卡，编号 81–320）。**之后加的 CSV 默认归入 `本年度課程`，并按 `seg` / `exam` 分层。**
 
-### 新增一批单词（每周更新时做这个就够了）
+### 新增 / 扩充词库（往 `source/` 丢 CSV 就行）
 
-1. 在 `vocabulary.json` 的 `groups` 里加一个键，值为该批次的单词数组；
-2. 在 `index.html` 的 `#dateSelect` 里加一个 `<option value="MMDD">显示文字</option>`；
-3. 在 `script.js` 的 `getDateMapping()` 里补上 `'MMDD': 'YYYY-MM-DD'` 的映射。
+词库由 CSV 生成：`tools/build_vocabulary.py` 会依序扫描 `source/` 与 `data/source/`（相对路径相同时以 `source/` 为准），读取所有 `*.csv` 后重建 `vocabulary.json`。
 
-> 第三步容易漏——如果不加，`script.js` 会把 `'MMDD'` 原样当作日期去匹配 `vocabulary.json` 里的键，导致选这一批时页面显示「没有可用单词」。
+**三步：**
 
-### 📥 不想改 JSON？用 CSV 导入
+```bash
+# 1) 把 CSV 放进 source/
+#    文件名就是批次键；要分「第几段第几次大测」可以用：
+#      seg1_exam1_unit1.csv   或   第1段_第1次_unit1.csv
+#    也可以不写在文件名，改在 CSV 里加 seg / exam 列（见下表）
 
-点工具栏的 **📥 CSV** 按钮导入自己的单词表，导入后把批次下拉框切到「📥 自定义词汇」即可开刷。
+# 2) 重建词库（或直接双击 build.bat）
+python tools/build_vocabulary.py
+
+# 3) 可选：确认词汇表已同步 / 打印前 10 组
+python tools/build_vocabulary.py --check
+python tools/build_vocabulary.py --show 10
+```
+
+> 这台机器上 `python` 不在 PATH 时，直接双击 **`build.bat`** 就行（会自己找 `py` / `python` / 常见安装路径）。
+
+重建后刷新页面即可；批次下拉框会自动多出这一批，**不用再改 `index.html` 或 `script.js`**。
+
+**CSV 格式**（UTF-8，表头大小写不限、顺序随意；也接受 `单词/中文/释义/同义词/例句/例句翻译` 等中文列名）：
+
+| 列名 | 是否必填 | 对应内容 |
+| --- | --- | --- |
+| `word` | ✅ 必填 | 英文单词 |
+| `chinese` | ✅ 必填 | 中文释义 |
+| `synonym` | 可选 | 同义词 / 近义词。有值 → 这一行生成 **两张卡**（共享 id）；留空 → 只生成一张卡 |
+| `example` | 可选 | 英文例句。留空时「句子填空」会退化为 `____（中文释义）`，仍可作答 |
+| `example_cn` | 可选 | 例句中文翻译 |
+| `deck` | 可选 | 大分类。默认 `本年度課程`；旧词写 `上年英語班生字` |
+| `seg` | 可选 | 第几段（正整数）；也可从文件名 `seg2_...` / `第2段...` 读取 |
+| `exam` | 可选 | 该段第几次大测（正整数）；也可从文件名 `exam3_...` / `第3次...` 读取 |
+| `label` | 可选 | 该批次在下拉框里的显示名；默认自动生成「第N段・第M次大測」 |
+| `batch` | 可选 | 逐行覆盖批次键（一般不用）|
+
+```csv
+word,chinese,synonym,example,example_cn,deck,seg,exam
+eloquent,雄辩的,articulate,"She gave an eloquent speech.","她发表了一场雄辩的演讲。",本年度課程,1,1
+meticulous,一丝不苟的,,He is meticulous about details.,他对细节一丝不苟。,本年度課程,1,1
+resilient,有韧性的,,The plant is resilient to drought.,这种植物耐旱。,本年度課程,1,2
+```
+
+> 一个 CSV = 一次大测（一个批次）。同一份 CSV 里的 `deck` / `seg` / `exam` 应该一致；不一致时会用第一个值并给 warning。想在同一次大测放多个词表，就放多个 CSV（同名段/次会自动汇总成一个下拉选项）。
+
+**生成器规则：**
+
+- **一行一组**；同一批次里重复的 `(word, synonym)` 会被跳过并给 warning。
+- **分类规则**：`deck` 缺省为 `本年度課程`；文件名/路径含「上年」会自动归入 `上年英語班生字`。`seg` / `exam` 可写列，也可写进文件名（`seg2_exam3_...`、`第2段_第3次_...`）；只给其中一个时另一个补 1 并给 warning。
+- 想给现有批次加词，直接在那个 CSV 里加行即可；新词会自动分配新 id。
+- 现有 `(批次, word, synonym)` 会**保留原 id**；新词从当前最大 id + 1 递增，所以反复重建 id 稳定。
+- **不要随意改已有批次的文件名或 `batch` 值**：批次名变了就等于换了一批，旧进度会对不上（新 id 也会重新分配）。
+- 一个批次可以有任意多行，不再局限于每批 40 组——想放几百上千个词也可以。
+- `custom` / `all` 是保留批次名，不能拿来当文件名。
+- 编码优先 UTF-8（带 BOM 也行），失败时依次尝试 GB18030 / Big5。
+- 建议让例句真的包含 `word` 或 `synonym`；否则句子填空会退化，生成器也会提示 warning。
+- 运行 `--check` 可判断 `vocabulary.json` 是否与 CSV 不同步；`--strict` 会把 warning 当作失败。
+
+> 内置的 6 批旧词已经拆成 `data/source/*.csv`（`deck=上年英語班生字`），可以直接照着改。`source/` 里的同名文件会覆盖 `data/source/` 的版本。
+
+### 📥 临时导入（不写入词库）
+
+点工具栏的 **📥 CSV** 按钮导入自己的单词表，导入后把批次下拉框切到「📥 自定义词汇」即可开刷。这个入口适合**临时刷一套词**，不会改动 `vocabulary.json`。
 
 **CSV 必须有第一行表头**，字段名为（大小写不限，顺序随意）：
 
@@ -162,7 +250,7 @@ resilient,有韧性的,"The plant is resilient to drought.","这种植物耐旱�
 
 > ⚠️ **三个容易踩的坑**
 > 1. **必须存成 UTF-8 编码**。Excel 在中文系统上另存 CSV 默认是 GBK，导入后会变乱码；请用「另存为 → CSV UTF-8」或用记事本转换编码。
-> 2. **刷新页面后自定义词汇会消失**。CSV 导入的词只存在于当前页面会话的内存里（内部 id 为负数），不会被保存，也不会写回 `vocabulary.json`。想长期用请改 JSON 词库，或搭配 **📤 导出**进度一起备份。
+> 2. **刷新页面后自定义词汇会消失**。CSV 导入的词只存在于当前页面会话的内存里（内部 id 为负数），不会被保存，也不会写回 `vocabulary.json`。想长期用请把 CSV 放进 `source/` 并运行 `python tools/build_vocabulary.py`（见上一节），或搭配 **📤 导出**进度一起备份。
 > 3. **一行一张卡**。CSV 每个单词只生成一张卡片，`synonym` 只是当作同义词显示；这和 JSON 词库里 `a`/`b` 会展开成两张卡不同。
 
 > 表头行本身请勿用引号包裹（如 `"word","chinese"`），解析器按逗号切分表头，带引号会导致列识别失败。
@@ -181,6 +269,8 @@ git push origin main
 
 注意：Pages 渲染的是 `main` 分支。早期版本曾推到 `master` 分支导致页面不更新，本地分支现已统一为 `main`。
 
+仓库根目录有 `.nojekyll`，GitHub Pages 会原样提供所有文件；`sw.js` / `manifest.webmanifest` 也走相对路径，放在 `/vocab-test/` 子路径下能正常工作。首次部署后，手机打开一次即可离线使用。
+
 ---
 
 ## 🔒 数据与隐私
@@ -191,4 +281,12 @@ git push origin main
 
 ## 🛠 技术栈
 
-原生 HTML + CSS + JavaScript，**无框架、无构建步骤、无第三方依赖**。发音使用浏览器内置的 Web Speech API（Chrome / Edge / Safari 支持较好，Firefox 视系统语音包而定）。
+原生 HTML + CSS + JavaScript，**网页本身无框架、无打包步骤、无第三方运行时依赖**；词库由 Python 脚本从 CSV 生成。发音使用浏览器内置的 Web Speech API（Chrome / Edge / Safari 支持较好，Firefox 视系统语音包而定），离线缓存由 Service Worker 提供。
+
+---
+
+## 📄 PWA 文件
+
+- `manifest.webmanifest`：应用名称、图标、主题色、standalone 显示
+- `sw.js`：预缓存 + 页面/词库 network-first + 静态资源 stale-while-revalidate；`VERSION` 每次发版手动 bump
+- `icons/icon-192.png` / `icon-512.png` / `icon-maskable-512.png`：主屏幕图标（可用 `python tools/make_icons.py` 重新生成）

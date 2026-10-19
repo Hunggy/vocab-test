@@ -1,6 +1,7 @@
 const STORAGE_KEY = 'vocab_test_progress';
 
 let vocabulary = [];
+let batches = [];   // [{ key, label, deck, seg, exam, minId, maxId, cards }]，按 vocabulary.json 的 batches 元数据顺序
 
 async function loadVocabulary() {
     let data = null;
@@ -26,36 +27,220 @@ async function loadVocabulary() {
     vocabulary = [];
     let idx = 0;
     Object.keys(data.groups).forEach(date => {
-        data.groups[date].forEach(word => {
-            // 添加第一个单词 (word.a)
+        const words = Array.isArray(data.groups[date]) ? data.groups[date] : [];
+
+        words.forEach(word => {
+            const synonym = typeof word.b === 'string' ? word.b.trim() : '';
+            // 无同义词时 a 卡也要正常出题（b 字段缺失/为空 → 单卡）
             vocabulary.push({
-                _idx: idx,
+                _idx: idx++,
                 id: word.id,
-                word: word.a,
-                synonym: word.b,
-                chinese: word.ch,
-                example: word.ex,
-                example_cn: word.cn,
+                word: word.a || '',
+                synonym: synonym,
+                chinese: word.ch || '',
+                example: word.ex || '',
+                example_cn: word.cn || '',
                 date: date,
                 synonymIndices: []
             });
-            idx++;
-            
-            // 添加第二个单词 (word.b) - 作为独立的单词条目
-            vocabulary.push({
-                _idx: idx,
-                id: word.id,  // 共享同一个 id，用于分组
-                word: word.b,
-                synonym: word.a,
-                chinese: word.ch,
-                example: word.ex,
-                example_cn: word.cn,
-                date: date,
-                synonymIndices: []
-            });
-            idx++;
+
+            // 仅在有非空同义词时添加第二张卡，两张卡共享同一个 id
+            if (synonym) {
+                vocabulary.push({
+                    _idx: idx++,
+                    id: word.id,
+                    word: synonym,
+                    synonym: word.a || '',
+                    chinese: word.ch || '',
+                    example: word.ex || '',
+                    example_cn: word.cn || '',
+                    date: date,
+                    synonymIndices: []
+                });
+            }
         });
     });
+
+    batches = buildBatchList(data);
+}
+
+// ===== 批次元数据与层级过滤（纯逻辑，不碰 DOM，便于独立测试）=====
+
+// 从 vocabulary.json 构建批次列表：
+// 有 batches 元数据时按元数据顺序（含 deck/seg/exam）；缺失时全部归入单一「未分類」deck
+function buildBatchList(data) {
+    const stats = {};
+    Object.keys(data.groups).forEach(date => {
+        const words = Array.isArray(data.groups[date]) ? data.groups[date] : [];
+        if (!words.length) return; // 空分组跳过，不进入批次下拉框
+        let cardCount = 0;
+        let minId = Infinity, maxId = -Infinity;
+        words.forEach(word => {
+            cardCount++;
+            const synonym = typeof word.b === 'string' ? word.b.trim() : '';
+            if (synonym) cardCount++;
+            if (typeof word.id === 'number' && !isNaN(word.id)) {
+                minId = Math.min(minId, word.id);
+                maxId = Math.max(maxId, word.id);
+            }
+        });
+        stats[date] = {
+            minId: minId === Infinity ? 0 : minId,
+            maxId: maxId === -Infinity ? 0 : maxId,
+            cards: cardCount
+        };
+    });
+
+    const list = [];
+    if (Array.isArray(data.batches) && data.batches.length) {
+        data.batches.forEach(meta => {
+            const s = stats[meta.key];
+            if (!s) return; // 元数据指向空/缺失分组时跳过
+            list.push({
+                key: meta.key,
+                label: meta.label || meta.key,
+                deck: meta.deck || '未分類',
+                seg: Number.isInteger(meta.seg) ? meta.seg : null,
+                exam: Number.isInteger(meta.exam) ? meta.exam : null,
+                minId: s.minId,
+                maxId: s.maxId,
+                cards: s.cards
+            });
+        });
+    }
+
+    // 元数据没覆盖到的分组（例如 CSV 临时批次）兜底归入「未分類」，避免单词不可选
+    Object.keys(stats).forEach(key => {
+        if (!list.some(b => b.key === key)) {
+            list.push({
+                key: key,
+                label: key,
+                deck: '未分類',
+                seg: null,
+                exam: null,
+                minId: stats[key].minId,
+                maxId: stats[key].maxId,
+                cards: stats[key].cards
+            });
+        }
+    });
+
+    return list;
+}
+
+// 批次键 → 下拉框标签：ISO 日期显示为 M月D日，其余用 label/key
+function formatBatchLabel(b) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b.key);
+    const range = ` (${b.minId}-${b.maxId})`;
+    if (m) return `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日${range}`;
+    return `${b.label || b.key}${range}`;
+}
+
+// 生成层级下拉框的选项描述列表：[{ value, label, group }]
+// group 为 null 表示顶层选项，否则是 optgroup 的 deck 名（保持元数据 deck 顺序）
+function buildDateOptions(batchList) {
+    const options = [];
+    if (batchList.length) {
+        const globalMin = Math.min(...batchList.map(b => b.minId));
+        const globalMax = Math.max(...batchList.map(b => b.maxId));
+        options.push({ value: 'all', label: `全部 (${globalMin}-${globalMax})`, group: null });
+    } else {
+        options.push({ value: 'all', label: '全部', group: null });
+    }
+
+    const deckOrder = [];
+    const byDeck = {};
+    batchList.forEach(b => {
+        if (!byDeck[b.deck]) { byDeck[b.deck] = []; deckOrder.push(b.deck); }
+        byDeck[b.deck].push(b);
+    });
+
+    deckOrder.forEach(deck => {
+        const list = byDeck[deck];
+        const enc = encodeURIComponent(deck);
+        const dMin = Math.min(...list.map(b => b.minId));
+        const dMax = Math.max(...list.map(b => b.maxId));
+        const groupOptions = [];
+        // deck 汇总
+        groupOptions.push({ value: `deck|${enc}`, label: `${deck}（全部） (${dMin}-${dMax})` });
+
+        // 有段/大測的批次 → 段汇总 + 大測汇总；没有的（旧班次）→ 逐项列出
+        const withSeg = list.filter(b => b.seg !== null);
+        const withoutSeg = list.filter(b => b.seg === null);
+
+        [...new Set(withSeg.map(b => b.seg))].sort((a, b) => a - b).forEach(seg => {
+            const segList = withSeg.filter(b => b.seg === seg);
+            const sMin = Math.min(...segList.map(b => b.minId));
+            const sMax = Math.max(...segList.map(b => b.maxId));
+            groupOptions.push({ value: `seg|${enc}|${seg}`, label: `第${seg}段（全部） (${sMin}-${sMax})` });
+
+            [...new Set(segList.map(b => b.exam).filter(e => e !== null))].sort((a, b) => a - b).forEach(exam => {
+                const exList = segList.filter(b => b.exam === exam);
+                const eMin = Math.min(...exList.map(b => b.minId));
+                const eMax = Math.max(...exList.map(b => b.maxId));
+                groupOptions.push({ value: `exam|${enc}|${seg}|${exam}`, label: `第${seg}段・第${exam}次大測 (${eMin}-${eMax})` });
+            });
+        });
+
+        withoutSeg.forEach(b => {
+            groupOptions.push({ value: b.key, label: formatBatchLabel(b) });
+        });
+
+        groupOptions.forEach(o => options.push({ value: o.value, label: o.label, group: deck }));
+    });
+
+    return options;
+}
+
+// 解析 deck|/seg|/exam| 过滤值 → 命中的批次键集合
+function resolveBatchKeys(value, batchList) {
+    const parts = value.split('|');
+    const kind = parts[0];
+    const deck = decodeURIComponent(parts[1] || '');
+    const seg = parseInt(parts[2], 10);
+    const exam = parseInt(parts[3], 10);
+    const keys = new Set();
+    batchList.forEach(b => {
+        if (b.deck !== deck) return;
+        if ((kind === 'seg' || kind === 'exam') && b.seg !== seg) return;
+        if (kind === 'exam' && b.exam !== exam) return;
+        keys.add(b.key);
+    });
+    return keys;
+}
+
+// 按选中的过滤值返回单词池（custom/all/deck/seg/exam/具体批次）
+function filterBySelection(selectedDate, vocab, batchList, legacyDateMapping) {
+    if (selectedDate === 'custom') return vocab.filter(v => v.id < 0);
+    if (!selectedDate || selectedDate === 'all') return vocab;
+    if (selectedDate.startsWith('deck|') || selectedDate.startsWith('seg|') || selectedDate.startsWith('exam|')) {
+        const keys = resolveBatchKeys(selectedDate, batchList);
+        return keys.size ? vocab.filter(v => keys.has(v.date)) : [];
+    }
+    const targetDate = legacyDateMapping(selectedDate);
+    return vocab.filter(v => v.date === targetDate);
+}
+
+// 句子填空：例句里能找到单词/同义词就挖空，否则退化为中文释义提示，避免空题干
+function buildBlankPrompt(w) {
+    if (!w) return '';
+    const example = typeof w.example === 'string' ? w.example : '';
+    const word = w.word || '';
+    const synonym = w.synonym || '';
+    const hitWord = !!word && example.includes(word);
+    const hitSynonym = !!synonym && example.includes(synonym);
+
+    if (!hitWord && !hitSynonym) {
+        return `____（${w.chinese || ''}）`;
+    }
+
+    let blanked = example;
+    const replacements = [];
+    if (hitSynonym) replacements.push({ word: synonym, len: synonym.length });
+    if (hitWord) replacements.push({ word: word, len: word.length });
+    replacements.sort((a, b) => b.len - a.len);   // 长词优先，避免 dominant / predominant 这类部分匹配
+    replacements.forEach(r => { blanked = blanked.replaceAll(r.word, '____'); });
+    return blanked;
 }
 
 function initApp() {
@@ -102,6 +287,8 @@ function initApp() {
         loadProgress();
         applyFontSizes();
         updateDirectionUI();
+        populateDateSelect();
+        selectedDate = normalizeSelectedDate(selectedDate);
         document.getElementById('dateSelect').value = selectedDate;
         document.getElementById('modeSelect').value = testMode;
         document.getElementById('directionSelect').value = testDirection;
@@ -145,6 +332,7 @@ function initApp() {
         }
     }
 
+    // 旧版按日期编码的映射，仅为兼容 localStorage 里的历史选择保留
     function getDateMapping(dateStr) {
         const mapping = {
             '0509': '2026-05-09',
@@ -157,14 +345,44 @@ function initApp() {
         return mapping[dateStr] || dateStr;
     }
 
+    // 按 vocabulary.json 的 batches 元数据生成分组下拉框：
+    // 自定义词汇 → 全部 → 每个 deck 一个 optgroup（deck 汇总 / 段汇总 / 大測汇总 / 无段大測的批次逐项）
+    function populateDateSelect() {
+        const sel = document.getElementById('dateSelect');
+        [...sel.querySelectorAll('option')].forEach(o => {
+            if (o.value !== 'custom') o.remove();
+        });
+        [...sel.querySelectorAll('optgroup')].forEach(g => g.remove());
+
+        let currentGroup = null, currentEl = null;
+        buildDateOptions(batches).forEach(({ value, label, group }) => {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = label;
+            if (group !== currentGroup) {
+                currentGroup = group;
+                currentEl = null;
+                if (group !== null) {
+                    currentEl = document.createElement('optgroup');
+                    currentEl.label = group;
+                    sel.appendChild(currentEl);
+                }
+            }
+            (currentEl || sel).appendChild(opt);
+        });
+    }
+
+    // 把 localStorage 里的旧编码/已失效批次键归一化为当前可选项
+    function normalizeSelectedDate(value) {
+        const iso = getDateMapping(value);
+        const sel = document.getElementById('dateSelect');
+        if ([...sel.options].some(o => o.value === iso)) return iso;
+        if (batches.length) return batches[0].key;
+        return 'all';
+    }
+
     function getAvailableWords() {
-        let pool = vocabulary;
-        if (selectedDate === 'custom') {
-            pool = vocabulary.filter(v => v.id < 0);
-        } else if (selectedDate !== 'all') {
-            const targetDate = getDateMapping(selectedDate);
-            pool = vocabulary.filter(v => v.date === targetDate);
-        }
+        const pool = filterBySelection(selectedDate, vocabulary, batches, getDateMapping);
         if (testMode === 0) return pool.map(v => v._idx);
         if (testMode === 1) return pool.slice(0, Math.ceil(pool.length / 2)).map(v => v._idx);
         if (testMode === 2) return pool.slice(Math.ceil(pool.length / 2)).map(v => v._idx);
@@ -280,7 +498,7 @@ function initApp() {
         if (testDirection === 0) {
             document.getElementById('wordDisplay').textContent = currentWord.word;
             // 英文选中文模式：如果例句不包含当前单词但包含同义词，替换成当前单词显示
-            let displayExample = currentWord.example;
+            let displayExample = currentWord.example || '';
             if (currentWord.synonym && displayExample && !displayExample.includes(currentWord.word) && displayExample.includes(currentWord.synonym)) {
                 displayExample = displayExample.replace(currentWord.synonym, currentWord.word);
             }
@@ -310,22 +528,8 @@ function initApp() {
             // 自动播放发音
             setTimeout(() => speak(currentWord.word), 500);
         } else {
-            // 句子填空模式：把单词或同义词替换成 ____
-            let example = currentWord.example || '';
-            const word = currentWord.word;
-            const synonym = currentWord.synonym;
-            const replacements = [];
-            if (synonym && example.includes(synonym)) {
-                replacements.push({ word: synonym, len: synonym.length });
-            }
-            if (example.includes(word)) {
-                replacements.push({ word: word, len: word.length });
-            }
-            replacements.sort((a, b) => b.len - a.len);
-            replacements.forEach(r => {
-                example = example.replaceAll(r.word, '____');
-            });
-            document.getElementById('wordDisplay').textContent = example;
+            // 句子填空模式：挖空；无例句时退化为中文释义提示
+            document.getElementById('wordDisplay').textContent = buildBlankPrompt(currentWord);
             document.getElementById('exampleDisplay').textContent = '';
             currentOptions = getRandomOptions(currentWord.word, 'english');
             correctIndex = currentOptions.indexOf(currentWord.word);
@@ -363,7 +567,7 @@ function initApp() {
                 if (testDirection === 2) {
                     document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(currentWord.example_cn, currentWord.chinese);
                 } else {
-                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn || '';
                 }
             }
         } else {
@@ -374,7 +578,7 @@ function initApp() {
                 if (testDirection === 2) {
                     document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(currentWord.example_cn, currentWord.chinese);
                 } else {
-                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn || '';
                 }
             }
         }
@@ -471,13 +675,7 @@ function initApp() {
             document.getElementById('exampleDisplay').textContent = w.example || '';
             document.getElementById('exampleCnDisplay').textContent = w.example_cn || '';
         } else {
-            let ex = w.example || '';
-            const reps = [];
-            if (w.synonym && ex.includes(w.synonym)) reps.push({ word: w.synonym, len: w.synonym.length });
-            if (ex.includes(w.word)) reps.push({ word: w.word, len: w.word.length });
-            reps.sort((a, b) => b.len - a.len);
-            reps.forEach(r => { ex = ex.replaceAll(r.word, '____'); });
-            document.getElementById('wordDisplay').textContent = ex;
+            document.getElementById('wordDisplay').textContent = buildBlankPrompt(w);
             document.getElementById('exampleDisplay').textContent = '';
             document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(w.example_cn || '', w.chinese || '');
         }
@@ -874,30 +1072,12 @@ function initApp() {
                     document.getElementById('wordDisplay').textContent = currentWord.chinese;
                     document.getElementById('exampleDisplay').textContent = '';
                 } else {
-                    // 句子填空模式：把单词或同义词替换成 ____
-                    let example = currentWord.example || '';
-                    const word = currentWord.word;
-                    const synonym = currentWord.synonym;
-                    
-                    // 按长度排序，先替换较长的词，避免部分匹配
-                    const replacements = [];
-                    if (synonym && example.includes(synonym)) {
-                        replacements.push({ word: synonym, len: synonym.length });
-                    }
-                    if (example.includes(word)) {
-                        replacements.push({ word: word, len: word.length });
-                    }
-                    
-                    replacements.sort((a, b) => b.len - a.len);
-                    replacements.forEach(r => {
-                        example = example.replaceAll(r.word, '____');
-                    });
-                    
-                    document.getElementById('wordDisplay').textContent = example;
+                    // 句子填空模式：与出题一致（无例句时退化为中文提示）
+                    document.getElementById('wordDisplay').textContent = buildBlankPrompt(currentWord);
                     document.getElementById('exampleDisplay').textContent = '';
                 }
                 document.getElementById('exampleCnDisplay').textContent =
-                    (testDirection !== 1 && isAnswering === false) ? currentWord.example_cn : '';
+                    (testDirection !== 1 && isAnswering === false) ? (currentWord.example_cn || '') : '';
                 $$('.option-btn').forEach((b, i) => {
                     b.textContent = currentOptions[i] || '-';
                     b.className = 'option-btn';
@@ -932,19 +1112,8 @@ function initApp() {
             // 如果是英选中模式，把同义词替换成当前单词
             let displayExample = currentWord.example || '';
             if (testDirection === 2) {
-                const word = currentWord.word;
-                const synonym = currentWord.synonym;
-                const replacements = [];
-                if (synonym && displayExample.includes(synonym)) {
-                    replacements.push({ word: synonym, len: synonym.length });
-                }
-                if (displayExample.includes(word)) {
-                    replacements.push({ word: word, len: word.length });
-                }
-                replacements.sort((a, b) => b.len - a.len);
-                replacements.forEach(r => {
-                    displayExample = displayExample.replaceAll(r.word, '____');
-                });
+                // 与出题保持一致：有例句挖空，无例句退化为中文提示
+                displayExample = buildBlankPrompt(currentWord);
             } else if (testDirection === 0) {
                 // 英选中模式：把同义词替换成当前单词
                 const word = currentWord.word;
@@ -957,7 +1126,7 @@ function initApp() {
             history.push({
                 idx: currentWordIndex, word: currentWord.word, chinese: currentWord.chinese,
                 example: displayExample, blank: testDirection === 2 ? displayExample : null,
-                example_cn: currentWord.example_cn, dir: testDirection,
+                example_cn: currentWord.example_cn || '', dir: testDirection,
                 opts: [...currentOptions], correct: correctIndex,
                 hard: currentWordIndex !== null && hardWords.has(currentWordIndex)
             });
@@ -1009,7 +1178,7 @@ function initApp() {
         if (testDirection === 0) {
             document.getElementById('wordDisplay').textContent = currentWord.word;
             // 英文选中文模式：如果例句不包含当前单词但包含同义词，替换成当前单词显示
-            let displayExample = currentWord.example;
+            let displayExample = currentWord.example || '';
             if (currentWord.synonym && displayExample && !displayExample.includes(currentWord.word) && displayExample.includes(currentWord.synonym)) {
                 displayExample = displayExample.replace(currentWord.synonym, currentWord.word);
             }
@@ -1039,29 +1208,11 @@ function initApp() {
             // 自动播放发音
             setTimeout(() => speak(currentWord.word), 500);
         } else {
-            // 句子填空模式：把单词或同义词替换成 ____
-            let example = currentWord.example || '';
-            const word = currentWord.word;
-            const synonym = currentWord.synonym;
-            
-            // 按长度排序，先替换较长的词，避免部分匹配（如 dominant 在 predominant 中）
-            const replacements = [];
-            if (synonym && example.includes(synonym)) {
-                replacements.push({ word: synonym, len: synonym.length });
-            }
-            if (example.includes(word)) {
-                replacements.push({ word: word, len: word.length });
-            }
-            
-            replacements.sort((a, b) => b.len - a.len);
-            
-            replacements.forEach(r => {
-                example = example.replaceAll(r.word, '____');
-            });
-            document.getElementById('wordDisplay').textContent = example;
+            // 句子填空模式：挖空；无例句时退化为中文释义提示
+            document.getElementById('wordDisplay').textContent = buildBlankPrompt(currentWord);
             document.getElementById('exampleDisplay').textContent = '';
-            currentOptions = getRandomOptions(word, 'english');
-            correctIndex = currentOptions.indexOf(word);
+            currentOptions = getRandomOptions(currentWord.word, 'english');
+            correctIndex = currentOptions.indexOf(currentWord.word);
         }
         if (testDirection !== 3) {
             document.getElementById('optionsGrid').style.display = 'grid';
@@ -1156,7 +1307,7 @@ function initApp() {
                 if (testDirection === 0 || testDirection === 2) {
                     document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(currentWord.example_cn, currentWord.chinese);
                 } else {
-                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn;
+                    document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn || '';
                 }
             }
             if (!hasMistake) {
@@ -1210,8 +1361,9 @@ function initApp() {
         const p = history[historyPos];
         currentWordIndex = p.idx;
         currentWord = vocabulary[p.idx];
-        document.getElementById('wordDisplay').textContent = p.dir === 0 ? p.word : (p.dir === 1 ? p.chinese : (p.dir === 3 ? p.word : (p.blank || p.example)));
-        document.getElementById('exampleDisplay').textContent = p.dir === 0 ? p.example : '';
+        const blankPrompt = p.dir === 2 ? (p.blank || buildBlankPrompt(currentWord)) : '';
+        document.getElementById('wordDisplay').textContent = p.dir === 0 ? p.word : (p.dir === 1 ? p.chinese : (p.dir === 3 ? p.word : blankPrompt));
+        document.getElementById('exampleDisplay').textContent = p.dir === 0 ? (p.example || '') : '';
         if (p.dir === 0 || p.dir === 2) {
             document.getElementById('exampleCnDisplay').innerHTML = highlightChineseMeaning(p.example_cn || '', p.chinese || '');
         } else {
@@ -1247,27 +1399,13 @@ function initApp() {
         } else if (s.td === 1 && s.w) {
             document.getElementById('wordDisplay').textContent = s.w.chinese;
         } else if (s.td === 2 && s.w) {
-            let example = s.w.example || '';
-            const word = s.w.word;
-            const synonym = s.w.synonym;
-            const replacements = [];
-            if (synonym && example.includes(synonym)) {
-                replacements.push({ word: synonym, len: synonym.length });
-            }
-            if (example.includes(word)) {
-                replacements.push({ word: word, len: word.length });
-            }
-            replacements.sort((a, b) => b.len - a.len);
-            replacements.forEach(r => {
-                example = example.replaceAll(r.word, '____');
-            });
-            document.getElementById('wordDisplay').textContent = example;
+            document.getElementById('wordDisplay').textContent = buildBlankPrompt(s.w);
         } else if (s.td === 3 && s.w) {
             document.getElementById('wordDisplay').textContent = '🔊 请听发音，输入英文单词';
         } else {
             document.getElementById('wordDisplay').textContent = '';
         }
-        document.getElementById('exampleDisplay').textContent = s.td === 0 && s.w ? s.w.example : '';
+        document.getElementById('exampleDisplay').textContent = s.td === 0 && s.w ? (s.w.example || '') : '';
         // 优先还原带高亮的 HTML，没有再退回纯文本
         if (s.ecnHTML) document.getElementById('exampleCnDisplay').innerHTML = s.ecnHTML;
         else document.getElementById('exampleCnDisplay').textContent = s.ecnd || '';
@@ -1361,9 +1499,9 @@ function initApp() {
                             `).join('<span style="color:var(--example-fg); font-weight:normal;">=</span>')}
                         </div>
                     </div>
-                    <div class="chinese-meaning">${arr[0].chinese}</div>
-                    <div class="example-en">${arr[0].example}</div>
-                    <div class="example-cn">${arr[0].example_cn}</div>
+                    <div class="chinese-meaning">${arr[0].chinese || ''}</div>
+                    <div class="example-en">${arr[0].example || ''}</div>
+                    <div class="example-cn">${arr[0].example_cn || ''}</div>
                 </div>`;
         });
         const list = document.getElementById('browseList');
@@ -1845,3 +1983,35 @@ loadVocabulary().then(() => {
         initApp();
     }
 });
+
+/* ---- Service Worker 注册（PWA 离线支持）----
+ * 只在 http/https 下注册；file:// 打开时直接跳过，避免报错。
+ */
+(function () {
+    if (!('serviceWorker' in navigator)) return;
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+
+    function registerSw() {
+        try {
+            navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+                /* 主动检查是否有新版本；失败不影响使用 */
+                if (reg && reg.update) {
+                    try {
+                        const p = reg.update();
+                        if (p && p.catch) p.catch(function () { });
+                    } catch (e) { }
+                }
+            }).catch(function (err) {
+                if (window.console && console.warn) console.warn('[sw] 注册失败：', err && err.message);
+            });
+        } catch (e) {
+            if (window.console && console.warn) console.warn('[sw] 注册失败：', e && e.message);
+        }
+    }
+
+    if (document.readyState === 'complete') {
+        registerSw();
+    } else {
+        window.addEventListener('load', registerSw, { once: true });
+    }
+})();

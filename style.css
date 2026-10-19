@@ -97,6 +97,31 @@ body {
 .stats .score { font-weight: 700; font-size: var(--font-medium); }
 .stats .remaining { color: var(--remaining-fg); font-weight: 700; font-size: var(--font-medium); }
 .stats .accuracy { color: var(--example-fg); }
+/* ===== 头部筛选行：批次/模式下拉，长标签时收缩省略不溢出 ===== */
+.header-row .combo-wrap {
+    display: inline-flex; align-items: center; gap: 6px;
+    min-width: 0; max-width: 100%; flex: 0 1 auto;
+}
+.header-row .combo-wrap select {
+    appearance: none; -webkit-appearance: none;
+    padding: 6px 22px 6px 10px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background-color: var(--btn-bg); color: var(--btn-fg);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23888' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat; background-position: right 6px center; background-size: 12px;
+    font-size: var(--font-small); min-height: 34px; cursor: pointer;
+    min-width: 0; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: all var(--transition);
+}
+.header-row .combo-wrap select:hover { background-color: var(--btn-hover); }
+.header-row .combo-wrap select#dateSelect { flex: 0 1 220px; }
+/* 窄屏：筛选行独占一行，批次下拉占满剩余宽度，模式下拉保持自然宽度 */
+@media (max-width: 500px) {
+    .header-row .combo-wrap { flex: 1 1 100%; }
+    .header-row .combo-wrap select { flex: 1 1 auto; }
+    .header-row .combo-wrap select#modeSelect { flex: 0 0 auto; }
+}
 .progress-wrap { width: 100%; height: 8px; background: var(--progress-bg); border-radius: 10px; overflow: hidden; }
 .progress-fill { height: 100%; background: var(--progress-fill); border-radius: 10px; transition: width 0.4s ease; }
 .word-card { text-align: center; padding: 8px 4px; position: relative; }

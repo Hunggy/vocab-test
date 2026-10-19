@@ -8,3 +8,20 @@
 !vocabulary.json
 !README.md
 !.gitignore
+!tools/
+!tools/**
+!data/
+!data/**
+!source/
+!source/**
+!build.bat
+!build.ps1
+!sw.js
+!manifest.webmanifest
+!.nojekyll
+!icons/
+!icons/**
+
+# 建置產物
+__pycache__/
+*.pyc

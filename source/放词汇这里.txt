@@ -1,0 +1,10 @@
+把詞彙 CSV 放在這個資料夾，然後雙擊 build.bat（或執行 python tools/build_vocabulary.py）。
+
+檔名（不含 .csv）就是批次鍵。新詞預設歸入「本年度課程」；要分「第幾段・第幾次大測」，可以這樣命名：
+
+    seg1_exam1_unit1.csv
+    第1段_第1次_unit1.csv
+
+也可以在 CSV 裡加 deck / seg / exam 欄位（詳細格式見 README）。
+
+舊詞（上年英語班生字）在 data/source/；這裡的同名檔案會覆蓋它。
