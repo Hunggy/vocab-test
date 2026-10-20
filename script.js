@@ -255,7 +255,11 @@ function filterBySelection(selectedDate, vocab, batchList, legacyDateMapping) {
 
 // 过滤值覆盖的卡片数（单词 + 同义词卡），供菜单内徽章展示
 function batchCardsFor(value) {
-    if (value === 'all') return batches.reduce((s, b) => s + (b.cards || 0), 0);
+    if (value === 'all') {
+        // 全部范围包含当前会话导入的自定义词；徽章也要计入，避免与 0/N 分母不一致
+        return batches.reduce((s, b) => s + (b.cards || 0), 0)
+            + vocabulary.filter(v => v.id < 0).length;
+    }
     if (value === 'custom') return null;
     const keys = /^(deck|seg|exam|cat)\|/.test(value) ? [...resolveBatchKeys(value, batches)] : [value];
     return keys.reduce((s, k) => {
@@ -305,7 +309,7 @@ function buildBatchMenuTree() {
                         return {
                             leaf: false, label: `第${e.no}次大測`,
                             children: [
-                                { leaf: true, value: value, label: '全部' },
+                                { leaf: true, value: value, label: `第${e.no}次大測（全部）` },
                                 ...categories.map(category => ({
                                     leaf: true,
                                     value: `cat|${enc}|${s.seg}|${e.no}|${encodeURIComponent(category)}`,
@@ -932,6 +936,8 @@ function initApp() {
     // 把 localStorage 里的旧编码/已失效批次键归一化为当前可选项
     function normalizeSelectedDate(value) {
         const iso = getDateMapping(value);
+        // 自定义词汇只存在当前会话；刷新后若已没有自定义词，退回「全部」，避免卡在 0/0 空范围
+        if (iso === 'custom' && !vocabulary.some(v => v.id < 0)) return 'all';
         const sel = document.getElementById('dateSelect');
         if ([...sel.options].some(o => o.value === iso)) return iso;
         if (batches.length) return batches[0].key;
@@ -1024,6 +1030,8 @@ function initApp() {
             wrongQueue: wrongQueue.map(item => ({ ...item })),
             reviewQueue: reviewQueue.map(item => ({ ...item })),
             questionCounter: questionCounter,
+            totalAttempts: totalAttempts,
+            correctAttempts: correctAttempts,
             history: [...history],
             currentWordIndex: currentWordIndex,
             currentWord: currentWord,
@@ -1032,6 +1040,8 @@ function initApp() {
             isAnswering: isAnswering,
             hasMistake: hasMistake,
             isViewingHistory: isViewingHistory,
+            optionStates: [...$$('.option-btn')].map(b => ({ t: b.textContent, d: b.disabled, c: b.className })),
+            stageHint: document.getElementById('stageHint').textContent,
             savedCurrentState: savedCurrentState ? { ...savedCurrentState } : null
         };
         isSpeedMode = true;
@@ -1640,19 +1650,22 @@ function initApp() {
         }
 
         if (savedNormalState) {
-            unmasteredIndices = savedNormalState.unmasteredIndices;
-            wrongQueue = savedNormalState.wrongQueue;
-            reviewQueue = savedNormalState.reviewQueue;
-            questionCounter = savedNormalState.questionCounter;
-            history = savedNormalState.history;
-            currentWordIndex = savedNormalState.currentWordIndex;
-            currentWord = savedNormalState.currentWord;
-            currentOptions = savedNormalState.currentOptions;
-            correctIndex = savedNormalState.correctIndex;
-            isAnswering = savedNormalState.isAnswering;
-            hasMistake = savedNormalState.hasMistake;
-            isViewingHistory = savedNormalState.isViewingHistory;
-            savedCurrentState = savedNormalState.savedCurrentState;
+            const state = savedNormalState;
+            unmasteredIndices = state.unmasteredIndices;
+            wrongQueue = state.wrongQueue;
+            reviewQueue = state.reviewQueue;
+            questionCounter = state.questionCounter;
+            totalAttempts = state.totalAttempts || 0;
+            correctAttempts = state.correctAttempts || 0;
+            history = state.history;
+            currentWordIndex = state.currentWordIndex;
+            currentWord = state.currentWord;
+            currentOptions = state.currentOptions;
+            correctIndex = state.correctIndex;
+            isAnswering = state.isAnswering;
+            hasMistake = state.hasMistake;
+            isViewingHistory = state.isViewingHistory;
+            savedCurrentState = state.savedCurrentState;
             savedNormalState = null;
 
             if (currentWord) {
@@ -1676,12 +1689,13 @@ function initApp() {
                 document.getElementById('exampleCnDisplay').textContent =
                     (testDirection !== 1 && isAnswering === false) ? (currentWord.example_cn || '') : '';
                 $$('.option-btn').forEach((b, i) => {
-                    b.textContent = currentOptions[i] || '-';
-                    b.className = 'option-btn';
-                    b.disabled = !isAnswering;
+                    const st = state.optionStates && state.optionStates[i];
+                    b.textContent = st ? st.t : (currentOptions[i] || '-');
+                    b.className = st ? st.c : 'option-btn';
+                    b.disabled = st ? st.d : !isAnswering;
                 });
-                document.getElementById('stageHint').textContent =
-                    testDirection === 0 ? '请选择中文解释:' : (testDirection === 1 ? '请选择英文单词:' : '请选择正确的单词填空:');
+                document.getElementById('stageHint').textContent = state.stageHint ||
+                    (testDirection === 0 ? '请选择中文解释:' : (testDirection === 1 ? '请选择英文单词:' : '请选择正确的单词填空:'));
             } else {
                 resetAndStart();
             }
@@ -1915,7 +1929,8 @@ function initApp() {
             updateScoreAndProgress(); saveProgress();
             nextTimeout = setTimeout(nextQuestion, 800);
         } else {
-            btn.classList.add('wrong'); hasMistake = true; totalAttempts++;
+            // 答错后禁用该选项并移开焦点：避免 Enter/空格重复触发同一个错误答案、重复计分
+            btn.classList.add('wrong'); btn.disabled = true; btn.blur(); hasMistake = true; totalAttempts++;
             const s = String(currentWordIndex);
             wrongWords[s] = (wrongWords[s] || 0) + 1;
             const cnt = wrongWords[s];
@@ -1924,6 +1939,7 @@ function initApp() {
             if (exist >= 0) wrongQueue[exist] = { idx: currentWordIndex, cnt, next: questionCounter + interval };
             else wrongQueue.push({ idx: currentWordIndex, cnt, next: questionCounter + interval });
             updateScoreAndProgress(); saveProgress();
+            document.getElementById('stageHint').textContent = '答错了，请再选一个答案';
         }
     }
 
@@ -2161,12 +2177,23 @@ function initApp() {
     function updateScoreAndProgress() {
         const avail = getAvailableWords();
         totalWords = avail.length;
-        const masteredCount = masteredIndices.filter(i => avail.includes(i)).length;
+        const availSet = new Set(avail);
+        const masteredSet = new Set(masteredIndices.filter(i => availSet.has(i)));
+        const masteredCount = masteredSet.size;
         document.getElementById('scoreLabel').textContent = `得分: ${masteredCount}/${totalWords}`;
-        const rem = unmasteredIndices.filter(i => avail.includes(i)).length + wrongQueue.filter(i => avail.includes(i.idx)).length + reviewQueue.filter(i => avail.includes(i.idx)).length;
-        document.getElementById('remainingLabel').textContent = `剩余: ${rem}`;
+
+        // 剩余按去重后的待完成词计：unmastered / wrongQueue / reviewQueue 可能指向同一词
+        const pending = new Set();
+        unmasteredIndices.forEach(i => { if (availSet.has(i)) pending.add(i); });
+        wrongQueue.forEach(q => { if (availSet.has(q.idx)) pending.add(q.idx); });
+        reviewQueue.forEach(q => { if (availSet.has(q.idx)) pending.add(q.idx); });
+        masteredSet.forEach(i => pending.delete(i));
+        document.getElementById('remainingLabel').textContent = `剩余: ${pending.size}`;
         document.getElementById('progressFill').style.width = totalWords ? (masteredCount / totalWords * 100) + '%' : '0%';
-        if (totalAttempts) document.getElementById('accuracyLabel').textContent = `正确率: ${Math.round(correctAttempts / totalAttempts * 100)}%`;
+        if (!isSpeedMode) {
+            document.getElementById('accuracyLabel').textContent =
+                `正确率: ${totalAttempts ? Math.round(correctAttempts / totalAttempts * 100) : 0}%`;
+        }
     }
 
     function resetAndStart(preserveMastered = false) {
@@ -2484,8 +2511,7 @@ function initApp() {
         const exampleCnIndex = headers.indexOf('example_cn');
         
         if (wordIndex === -1 || chineseIndex === -1) {
-            showToast('CSV 文件必须包含 word 和 chinese 列');
-            return [];
+            return []; // 由 applyCsvImport 统一提示，避免一次导入弹出两条 toast
         }
         
         const words = [];
@@ -2516,7 +2542,9 @@ function initApp() {
             return;
         }
         if (!parsedWords.length) {
-            showToast(failedFiles > 0 ? 'CSV 导入失败，请检查文件格式' : 'CSV 中没有可导入的词汇');
+            showToast(failedFiles > 0
+                ? 'CSV 导入失败，请检查文件格式'
+                : 'CSV 中没有可导入的词汇（请检查表头是否包含 word 和 chinese）');
             return;
         }
 
@@ -2565,7 +2593,8 @@ function initApp() {
         vocabulary.forEach((v, i) => { v._idx = i; });
         saveProgress();
 
-        // 刷新界面
+        // 刷新界面（范围菜单的「全部」徽章要计入新增的自定义词）
+        renderBatchMenu();
         updateDirectionUI();
 
         // 重置界面显示状态

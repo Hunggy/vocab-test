@@ -3,6 +3,7 @@
     {"key":"seg1_exam2_unit3", "label":"第1段・第2次大測", "deck":"本年度課程", "seg":1, "exam":2, "category":"課文生字"},
     {"key":"seg1_exam2_unit4", "label":"第1段・第2次大測", "deck":"本年度課程", "seg":1, "exam":2, "category":"課文生字"},
     {"key":"seg1_exam2_phrases", "label":"第1段・第2次大測", "deck":"本年度課程", "seg":1, "exam":2, "category":"Phrases"},
+    {"key":"seg1_exam2_mpc", "label":"第1段・第2次大測", "deck":"本年度課程", "seg":1, "exam":2, "category":"MPC"},
     {"key":"2026-05-09", "label":"2026-05-09", "deck":"上年英語班生字", "category":"課文生字"},
     {"key":"2026-05-16", "label":"2026-05-16", "deck":"上年英語班生字", "category":"課文生字"},
     {"key":"2026-05-23", "label":"2026-05-23", "deck":"上年英語班生字", "category":"課文生字"},
@@ -378,6 +379,23 @@
       {"id":440, "a":"follow one's example", "ch":"以...為榜樣"},
       {"id":441, "a":"exhibit one's courage", "ch":"表現出勇氣"},
       {"id":442, "a":"explain to sb. for sth.", "ch":"向某人解釋某事"}
+    ],
+    "seg1_exam2_mpc": [
+      {"id":459, "a":"net zero target", "ch":"排放清零目标", "ex":"It's part of a government strategy in order to help the UK meet its 2050 net zero target.", "cn":"这是英国政府策略的一部分，旨在帮助英国达成2050年净零目标。"},
+      {"id":445, "a":"dealerships", "ch":"经销商", "ex":"Battery electric and hybrid cars accounted for nearly a third of new cars leaving dealerships last month.", "cn":"上个月纯电动和混合动力汽车占离开经销店的新车近三分之一。"},
+      {"id":446, "a":"reservations", "ch":"保留", "ex":"But would-be buyers still have a lot of reservations.", "cn":"但潜在买家仍有很多顾虑。"},
+      {"id":447, "a":"household tariff", "ch":"家用电费", "ex":"The cost of the electricity used to power your EV will vary according to your household tariff.", "cn":"给你的电动汽车充电的电费会因你的家庭电价（电表）而异。"},
+      {"id":448, "a":"wear and tear", "ch":"磨损", "ex":"An EV is likely to suffer less wear and tear because it has fewer moving parts.", "cn":"电动汽车运动部件更少，所以磨损更小。"},
+      {"id":449, "a":"guarantee", "ch":"保证", "ex":"Many manufacturers offer a guarantee of at least eight years.", "cn":"许多制造商提供至少八年的保证（质保）。"},
+      {"id":451, "a":"periodically", "ch":"定期地；周期性地", "ex":"You can charge up periodically, as you would with a petrol or diesel car.", "cn":"你可以像给汽油车或柴油车加油一样定期充电。"},
+      {"id":452, "a":"power up", "ch":"充电；给……供电", "ex":"People relying on public chargers face higher costs to power up their EV.", "cn":"依赖公共充电桩的人给自己的电动汽车充电要花更多钱。"},
+      {"id":453, "a":"domestic users", "ch":"家庭用户", "ex":"Public charge points attract a higher rate of VAT; 20% compared with the 5% paid by domestic users.", "cn":"公共充电点的增值税更高，为20%，而家庭用户只需付5%。"},
+      {"id":460, "a":"subscription", "ch":"订阅", "ex":"He expects to see a huge rise in things like subscription models.", "cn":"他预计订阅模式这类东西会大幅增加。"},
+      {"id":456, "a":"maintenance", "ch":"维护", "ex":"Customers pay monthly to use a car with other costs like insurance and maintenance included.", "cn":"顾客按月付费使用汽车，保险和维护等其他费用都包含在内。"},
+      {"id":458, "a":"autonomous car", "ch":"自动驾驶汽车", "ex":"You will have an app to call up an autonomous car to take you where you want to go.", "cn":"你将有一个应用程序可以召唤自动驾驶汽车带你去想去的地方。"},
+      {"id":461, "a":"public charging points", "ch":"公共充电桩", "ex":"The government is promising to expand the network of public charging points to 300,000.", "cn":"政府承诺将公共充电桩网络扩大到30万个。"},
+      {"id":462, "a":"counterparts", "ch":"对应车型；同类车辆", "ex":"Electric cars usually cost thousands of pounds more than their petrol, or diesel, counterparts.", "cn":"电动汽车通常比汽油或柴油的同类车型贵数千英镑。"},
+      {"id":463, "a":"exempt", "ch":"豁免", "ex":"Zero emissions vehicles like electric cars are exempt.", "cn":"像电动汽车这样的零排放车辆是豁免（免税）的。"}
     ]
   }
 }
