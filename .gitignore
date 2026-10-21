@@ -16,6 +16,8 @@
 !source/**
 !build.bat
 !build.ps1
+!publish.bat
+!publish.ps1
 !sw.js
 !manifest.webmanifest
 !.nojekyll
