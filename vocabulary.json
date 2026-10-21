@@ -395,7 +395,23 @@
       {"id":458, "a":"autonomous car", "ch":"自动驾驶汽车", "ex":"You will have an app to call up an autonomous car to take you where you want to go.", "cn":"你将有一个应用程序可以召唤自动驾驶汽车带你去想去的地方。"},
       {"id":461, "a":"public charging points", "ch":"公共充电桩", "ex":"The government is promising to expand the network of public charging points to 300,000.", "cn":"政府承诺将公共充电桩网络扩大到30万个。"},
       {"id":462, "a":"counterparts", "ch":"对应车型；同类车辆", "ex":"Electric cars usually cost thousands of pounds more than their petrol, or diesel, counterparts.", "cn":"电动汽车通常比汽油或柴油的同类车型贵数千英镑。"},
-      {"id":463, "a":"exempt", "ch":"豁免", "ex":"Zero emissions vehicles like electric cars are exempt.", "cn":"像电动汽车这样的零排放车辆是豁免（免税）的。"}
+      {"id":463, "a":"exempt", "ch":"豁免", "ex":"Zero emissions vehicles like electric cars are exempt.", "cn":"像电动汽车这样的零排放车辆是豁免（免税）的。"},
+      {"id":464, "a":"pioneers", "ch":"先锋；先驱", "ex":"Scientists are the pioneers of new discovery.", "cn":"科学家是新发现的先驱。"},
+      {"id":465, "a":"critical mindset", "ch":"批判性思维", "ex":"They also try to maintain a critical mindset and stay open-minded.", "cn":"他们还努力保持批判性思维并保持开放的心态。"},
+      {"id":466, "a":"Outside a construction site", "ch":"施工场地外；建筑工地外面", "ex":"Where is the most likely place you find this sign? Outside a construction site.", "cn":"你最可能在什么地方看到这个标志？在建筑工地外面。"},
+      {"id":467, "a":"key", "ch":"重要的；关键的", "ex":"The UN's key report on the global economy shows that the COVID-19 pandemic has put the brakes on a rapid recovery.", "cn":"联合国关于全球经济的重要报告显示，新冠疫情阻碍了经济的快速复苏。"},
+      {"id":468, "a":"recovery", "ch":"复苏；恢复", "ex":"The COVID-19 pandemic has put the brakes on a rapid recovery.", "cn":"新冠疫情阻碍了经济的快速复苏。"},
+      {"id":469, "a":"sustainable", "ch":"可持续的", "ex":"compared to pre-pandemic projections, leading to more poverty and less progress on sustainable development and climate action.", "cn":"相比疫情前的预测，导致更多贫困，也使得可持续发展和气候行动的进展减少。"},
+      {"id":470, "a":"vulnerable", "ch":"脆弱的；易受影响的", "ex":"Poverty is projected to increase further in the most vulnerable economies.", "cn":"在最脆弱的经济体中，贫困预计将进一步加剧。"},
+      {"id":471, "a":"social protection", "ch":"社会保护；社会保障", "ex":"The special financial measures put in place by many governments since the pandemic – such as improved social protection and job support – should stay in place to ensure a strong recovery.", "cn":"自疫情以来多国政府推出的特殊财政措施——例如改善社会保护和就业支持——应当保留以确保强劲复苏。"},
+      {"id":472, "a":"inflation", "ch":"通货膨胀；通胀", "ex":"In light of rising inflation, several central banks have begun to unwind their extraordinary monetary response to the crisis.", "cn":"鉴于通胀上升，多家央行已开始撤回其应对危机的非常规货币政策。"},
+      {"id":473, "a":"on the verge of", "ch":"濒临；即将……的", "ex":"Additional borrowing during the pandemic and increasing debt-servicing costs, have put many of them on the verge of a debt crisis.", "cn":"额外的借贷和不断增加的偿债成本使其中许多国家濒临债务危机。"},
+      {"id":474, "a":"unwind", "ch":"撤回；解除", "ex":"In light of rising inflation, several central banks have begun to unwind their extraordinary monetary response to the crisis.", "cn":"鉴于通胀上升，多家央行已开始撤回其应对危机的非常规货币政策。"},
+      {"id":475, "a":"debt-servicing costs", "ch":"偿债成本；债务偿还费用", "ex":"Additional borrowing during the pandemic and increasing debt-servicing costs, have put many of them on the verge of a debt crisis.", "cn":"疫情期间的额外借贷和不断增加的偿债成本使其中许多国家濒临债务危机。"},
+      {"id":476, "a":"stimulus spending", "ch":"刺激支出；刺激措施开支", "ex":"Employment levels in developing countries remain low, amid lower vaccination progress and limited stimulus spending.", "cn":"由于疫苗接种进展较慢和刺激支出有限，发展中国家的就业水平仍然较低。"},
+      {"id":477, "a":"labour force", "ch":"劳动力", "ex":"Labour force participation in the United States and Europe remain at historically low levels.", "cn":"美国和欧洲的劳动力参与率仍处于历史低位。"},
+      {"id":478, "a":"coordinated", "ch":"协调的", "ex":"These countries are in urgent need of further and coordinated international support for debt relief.", "cn":"这些国家迫切需要进一步、协调的国际债务减免支持。"},
+      {"id":479, "a":"offset", "ch":"抵消", "ex":"In many countries, the pace of job creation is not enough to offset the earlier employment losses.", "cn":"在许多国家，创造就业的速度不足以抵消此前的就业损失。"}
     ]
   }
 }
