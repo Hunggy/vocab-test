@@ -99,10 +99,19 @@ function buildBatchList(data) {
         const words = Array.isArray(data.groups[date]) ? data.groups[date] : [];
         if (!words.length) return; // 空分组跳过，不进入批次下拉框
         let cardCount = 0;
+        let minId = Infinity, maxId = -Infinity;
         words.forEach(word => {
             cardCount += entryCardCount(word);
+            if (typeof word.id === 'number' && !isNaN(word.id)) {
+                minId = Math.min(minId, word.id);
+                maxId = Math.max(maxId, word.id);
+            }
         });
-        stats[date] = { cards: cardCount };
+        stats[date] = {
+            cards: cardCount,
+            minId: minId === Infinity ? null : minId,
+            maxId: maxId === -Infinity ? null : maxId
+        };
     });
 
     const list = [];
@@ -117,6 +126,8 @@ function buildBatchList(data) {
                 seg: Number.isInteger(meta.seg) ? meta.seg : null,
                 exam: Number.isInteger(meta.exam) ? meta.exam : null,
                 category: meta.category || '課文生字',
+                minId: s.minId,
+                maxId: s.maxId,
                 cards: s.cards
             });
         });
@@ -132,6 +143,8 @@ function buildBatchList(data) {
                 seg: null,
                 exam: null,
                 category: '課文生字',
+                minId: stats[key].minId,
+                maxId: stats[key].maxId,
                 cards: stats[key].cards
             });
         }
@@ -140,11 +153,14 @@ function buildBatchList(data) {
     return list;
 }
 
-// 批次键 → 下拉框标签：ISO 日期显示为 M月D日，其余用 label/key
+// 批次键 → 下拉框标签：ISO 日期显示为 M月D日，并附上该批次的 ID 范围（旧版「5月9日 (81-120)」）
 function formatBatchLabel(b) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b.key);
-    if (m) return `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日`;
-    return b.label || b.key;
+    const range = (typeof b.minId === 'number' && typeof b.maxId === 'number')
+        ? ` (${b.minId}-${b.maxId})`
+        : '';
+    if (m) return `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日${range}`;
+    return `${b.label || b.key}${range}`;
 }
 
 // 分类排序：課文生字 → Phrases → MPC → 其他（同級按名称）

@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var VERSION = 'vocab-test-2026-10-20.2';
+  var VERSION = 'vocab-test-2026-10-22.1';
 
   var PRECACHE = [
     './',
