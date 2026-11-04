@@ -179,6 +179,18 @@ function sortCategories(list) {
     });
 }
 
+// 段內節點顯示名：批次自訂 label 優先，否則用「第M次大測」。
+// 自訂 label 可寫「考試」或「第1段・考試」；自動產生的「第1段・第3次大測」仍顯示為「第3次大測」。
+function examGroupLabel(seg, exam, batchLabels) {
+    const fallback = `第${exam}次大測`;
+    const auto = `第${seg}段・${fallback}`;
+    const labels = (batchLabels || []).map(label => (label || '').trim()).filter(Boolean);
+    const custom = labels.find(label => label !== auto);
+    const text = custom || fallback;
+    const prefix = `第${seg}段・`;
+    return text.startsWith(prefix) ? text.slice(prefix.length) : text;
+}
+
 // 生成层级下拉框的选项描述列表：[{ value, label, group }]
 // group 为 null 表示顶层选项，否则是 optgroup 的 deck 名（保持元数据 deck 顺序）
 function buildDateOptions(batchList) {
@@ -208,15 +220,15 @@ function buildDateOptions(batchList) {
             groupOptions.push({ value: `seg|${enc}|${seg}`, label: `第${seg}段（全部）` });
 
             [...new Set(segList.map(b => b.exam).filter(e => e !== null))].sort((a, b) => a - b).forEach(exam => {
-                groupOptions.push({ value: `exam|${enc}|${seg}|${exam}`, label: `第${seg}段・第${exam}次大測` });
+                const examBatches = segList.filter(b => b.exam === exam);
+                const examLabel = examGroupLabel(seg, exam, examBatches.map(b => b.label));
+                groupOptions.push({ value: `exam|${enc}|${seg}|${exam}`, label: `第${seg}段・${examLabel}` });
                 // 同一大測可能有多個分類（課文生字 / Phrases / MPC）；每個分類也要能被持久化選中
-                const categories = sortCategories(
-                    segList.filter(b => b.exam === exam).map(b => b.category)
-                );
+                const categories = sortCategories(examBatches.map(b => b.category));
                 categories.forEach(category => {
                     groupOptions.push({
                         value: `cat|${enc}|${seg}|${exam}|${encodeURIComponent(category)}`,
-                        label: `第${seg}段・第${exam}次大測・${category}`
+                        label: `第${seg}段・${examLabel}・${category}`
                     });
                 });
             });
@@ -298,7 +310,8 @@ function buildBatchMenuTree() {
             if (!s) { s = { seg: b.seg, exams: [] }; d.segs.push(s); }
             if (b.exam != null) {
                 let e = s.exams.find(x => x.no === b.exam);
-                if (!e) { e = { no: b.exam, categories: [] }; s.exams.push(e); }
+                if (!e) { e = { no: b.exam, labels: [], categories: [] }; s.exams.push(e); }
+                e.labels.push(b.label);
                 if (b.category && e.categories.indexOf(b.category) < 0) e.categories.push(b.category);
             }
         } else {
@@ -319,13 +332,19 @@ function buildBatchMenuTree() {
             if (exams.length) {
                 const examNodes = exams.map(e => {
                     const categories = sortCategories(e.categories);
+                    const label = examGroupLabel(s.seg, e.no, e.labels);
+                    const autoLabel = `第${s.seg}段・第${e.no}次大測`;
+                    const isCustom = (e.labels || []).some(l => {
+                        const text = (l || '').trim();
+                        return text && text !== autoLabel;
+                    });
                     const value = `exam|${enc}|${s.seg}|${e.no}`;
                     if (categories.length > 1) {
                         // 大測內再分課文生字 / Phrases / MPC
                         return {
-                            leaf: false, label: `第${e.no}次大測`,
+                            leaf: false, label: label,
                             children: [
-                                { leaf: true, value: value, label: `第${e.no}次大測（全部）` },
+                                { leaf: true, value: value, label: `${label}（全部）` },
                                 ...categories.map(category => ({
                                     leaf: true,
                                     value: `cat|${enc}|${s.seg}|${e.no}|${encodeURIComponent(category)}`,
@@ -335,9 +354,10 @@ function buildBatchMenuTree() {
                         };
                     }
                     if (categories.length === 1) {
-                        return { leaf: true, value: value, label: `第${e.no}次大測（${categories[0]}）` };
+                        // 自訂節點名（例如「考試」）不再綴分類，避免出現「考試（課文生字）」
+                        return { leaf: true, value: value, label: isCustom ? label : `${label}（${categories[0]}）` };
                     }
-                    return { leaf: true, value: value, label: `第${s.seg}段・第${e.no}次大測` };
+                    return { leaf: true, value: value, label: `第${s.seg}段・${label}` };
                 });
                 // 段一层 → 段汇总 + 各大測
                 children.push({
