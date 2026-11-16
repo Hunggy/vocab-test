@@ -847,7 +847,8 @@ function initApp() {
     let questionCounter = 0, isReviewQuestion = false, history = [];
     let historyPos = -1;             // 普通模式回看游标，-1 表示不在回看
     let prevPendingNext = false;     // 进入回看时是否正等着自动跳下一题
-    let testMode = 0, testDirection = 0, darkMode = false, selectedDate = '0509', autoSpeak = false;
+    let testMode = 0, testDirection = 0, darkMode = false, selectedDate = '0509', autoSpeak = false, soundFx = true;
+    let audioCtx = null;
     let hideExamples = false;        // 隐藏例句开关（只看单词，不给上下文提示）
     let fontSizes = { large: 26, medium: 15, small: 12 };
     let totalAttempts = 0, correctAttempts = 0, startTime = Date.now(), totalWords = 0;
@@ -1091,8 +1092,9 @@ function initApp() {
         speedPrevSavedState = null;
         speedPendingNext = false;
 
-        document.getElementById('topActions').style.display = 'none';
-        document.getElementById('btnHardWord').style.display = 'none';
+        // 速通中保留「標記難詞」（星號），只隱藏斬詞；A 鍵也可切換
+        document.getElementById('topActions').style.display = '';
+        document.getElementById('btnHardWord').style.display = '';
         document.getElementById('btnSlashWord').style.display = 'none';
         document.getElementById('modeSelect').disabled = true;
         document.getElementById('directionSelect').disabled = true;
@@ -1104,7 +1106,7 @@ function initApp() {
         document.getElementById('btnPrev').disabled = true;
         document.getElementById('btnReturn').disabled = true;
         document.getElementById('titleLabel').textContent = '速通模式';
-        document.getElementById('shortcutHint').textContent = '速通中：1-4 选答案，答完自动下一题 | ← 看上一题 | → 返回 | 可随时浏览单词';
+        document.getElementById('shortcutHint').textContent = '速通中：1-4 选答案，答完自动下一题 | A 标记难词 | ← 看上一题 | → 返回 | 可随时浏览单词';
         document.getElementById('progressFill').style.width = '0%';
         document.getElementById('btnSpeedMode').style.display = 'none';
         document.getElementById('btnExitSpeed').style.display = '';
@@ -1134,6 +1136,8 @@ function initApp() {
         currentWord = vocabulary[idx];
         isAnswering = true;
         hasMistake = false;
+        document.getElementById('btnHardWord').style.display = '';
+        document.getElementById('btnHardWord').textContent = hardWords.has(idx) ? '★' : '☆';
         document.getElementById('exampleCnDisplay').textContent = '';
 
         if (testDirection === 0) {
@@ -1202,6 +1206,7 @@ function initApp() {
         speedAttempts++;
         if (i === correctIndex) {
             btn.classList.add('correct');
+            playAnswerSound(true);
             speedCorrect++;
             if (autoSpeak && (testDirection === 1 || testDirection === 2) && currentWord) speak(currentWord.word);
             if (testDirection !== 1) {
@@ -1213,6 +1218,7 @@ function initApp() {
             }
         } else {
             btn.classList.add('wrong');
+            playAnswerSound(false);
             speedMistakes.push(currentWordIndex);
             $$('.option-btn')[correctIndex].classList.add('correct');
             if (testDirection !== 1) {
@@ -1255,11 +1261,13 @@ function initApp() {
         if (userAnswer.toLowerCase() === currentWord.word.toLowerCase()) {
             feedback.textContent = `✓ 正确！${currentWord.word} - ${currentWord.chinese}`;
             feedback.style.color = 'var(--progress-fill)';
+            playAnswerSound(true);
             speedCorrect++;
             document.getElementById('exampleCnDisplay').textContent = currentWord.example_cn || '';
         } else {
             feedback.textContent = `✗ 错误！正确答案: ${currentWord.word}`;
             feedback.style.color = 'var(--remaining-fg)';
+            playAnswerSound(false);
             speedMistakes.push(currentWordIndex);
         }
         
@@ -1298,6 +1306,8 @@ function initApp() {
     function renderSpeedPrev() {
         const rec = speedHistory[speedPrevPos];
         if (!rec) return;
+        // 回看的是歷史題，currentWordIndex 仍指向當前題；先隱藏難詞鍵，避免標錯詞
+        document.getElementById('btnHardWord').style.display = 'none';
         const w = vocabulary[rec.idx];
         const dir = rec.dir;
 
@@ -1390,6 +1400,8 @@ function initApp() {
         });
         document.getElementById('btnPrev').disabled = speedHistory.length === 0;
         document.getElementById('btnReturn').disabled = true;
+        document.getElementById('btnHardWord').style.display = '';
+        document.getElementById('btnHardWord').textContent = currentWordIndex !== null && hardWords.has(currentWordIndex) ? '★' : '☆';
         if (speedPendingNext) {
             speedPendingNext = false;
             nextTimeout = setTimeout(showSpeedQuestion, 700);
@@ -1898,6 +1910,7 @@ function initApp() {
             if (userAnswer.toLowerCase() === currentWord.word.toLowerCase()) {
                 feedback.textContent = `✓ 正确！${currentWord.word} - ${currentWord.chinese}`;
                 feedback.style.color = 'var(--progress-fill)';
+                playAnswerSound(true);
                 // 答对后不重复播放发音
                 
                 isAnswering = false;
@@ -1915,6 +1928,7 @@ function initApp() {
             } else {
                 feedback.textContent = `✗ 错误！正确答案: ${currentWord.word}`;
                 feedback.style.color = 'var(--remaining-fg)';
+                playAnswerSound(false);
                 hasMistake = true;
                 
                 // 答错后记录错误，但不进入下一题
@@ -1947,6 +1961,7 @@ function initApp() {
         if (!btn || btn.disabled) return;
         if (i === correctIndex) {
             btn.classList.add('correct'); isAnswering = false;
+            playAnswerSound(true);
             $$('.option-btn').forEach(b => b.disabled = true);
             totalAttempts++;
             if (autoSpeak && (testDirection === 1 || testDirection === 2) && currentWord) speak(currentWord.word);
@@ -1966,6 +1981,7 @@ function initApp() {
             nextTimeout = setTimeout(nextQuestion, 800);
         } else {
             // 答错后禁用该选项并移开焦点：避免 Enter/空格重复触发同一个错误答案、重复计分
+            playAnswerSound(false);
             btn.classList.add('wrong'); btn.disabled = true; btn.blur(); hasMistake = true; totalAttempts++;
             const s = String(currentWordIndex);
             wrongWords[s] = (wrongWords[s] || 0) + 1;
@@ -2097,6 +2113,7 @@ function initApp() {
 
     function toggleHardWord() {
         if (currentWordIndex === null || isViewingHistory || isBrowseMode) return;
+        if (isSpeedMode && speedPrevPos !== -1) return; // 速通回看中標的是歷史題，會標錯詞
         if (isCardMode && cardPrevPos !== -1) return; // 回看中标记的是历史卡，会标错词
         if (hardWords.has(currentWordIndex)) { hardWords.delete(currentWordIndex); showToast('已取消难词标记'); }
         else { hardWords.add(currentWordIndex); showToast('已标记为难词'); }
@@ -2286,6 +2303,7 @@ function initApp() {
                     return;
                 }
                 if (speedPrevPos !== -1) return; // 回看上一题时不响应 1-4
+                if (k === 'a' || k === 'A') { e.preventDefault(); toggleHardWord(); return; }
                 if (k === '1') { e.preventDefault(); selectOption(0); }
                 if (k === '2') { e.preventDefault(); selectOption(1); }
                 if (k === '3') { e.preventDefault(); selectOption(2); }
@@ -2346,6 +2364,13 @@ function initApp() {
             document.getElementById('btnAutoSpeak').textContent = autoSpeak ? '♪ On' : '♪ Off';
             document.getElementById('btnAutoSpeak').style.background = autoSpeak ? 'var(--accent)' : '';
             document.getElementById('btnAutoSpeak').style.color = autoSpeak ? '#fff' : '';
+            saveProgress();
+        };
+        document.getElementById('btnSoundFx').onclick = () => {
+            soundFx = !soundFx;
+            updateSoundFxBtn();
+            if (soundFx) playAnswerSound(true);
+            showToast(soundFx ? '答题音效已开启' : '答题音效已关闭');
             saveProgress();
         };
         document.getElementById('btnHideExamples').onclick = () => {
@@ -2452,6 +2477,61 @@ function initApp() {
         uttr.lang = 'en-US';
         uttr.rate = 0.9;
         window.speechSynthesis.speak(uttr);
+    }
+
+    // ===== 答题音效：Web Audio 合成，无外部音频文件 =====
+    function getAudioCtx() {
+        if (!audioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return null;
+            audioCtx = new Ctx();
+        }
+        return audioCtx;
+    }
+
+    function playTone(ctx, freq, start, duration, type, volume) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + duration + 0.02);
+    }
+
+    function playAnswerSound(correct) {
+        if (!soundFx) return;
+        try {
+            const ctx = getAudioCtx();
+            if (!ctx) return;
+            const schedule = () => {
+                const t = ctx.currentTime;
+                if (correct) {
+                    // 答对：短促两音「叮」
+                    playTone(ctx, 880, t, 0.07, 'sine', 0.12);
+                    playTone(ctx, 1318.5, t + 0.075, 0.09, 'sine', 0.1);
+                } else {
+                    // 答错：低音两下「哔」
+                    playTone(ctx, 196, t, 0.09, 'triangle', 0.12);
+                    playTone(ctx, 165, t + 0.1, 0.12, 'triangle', 0.1);
+                }
+            };
+            // 浏览器自动播放策略：首次必须在用户手势里 resume 后才能出声
+            if (ctx.state === 'suspended') ctx.resume().then(schedule).catch(() => {});
+            else schedule();
+        } catch (e) { /* 音频不可用时静默降级 */ }
+    }
+
+    function updateSoundFxBtn() {
+        const btn = document.getElementById('btnSoundFx');
+        if (!btn) return;
+        btn.textContent = soundFx ? '🔔 On' : '🔕 Off';
+        btn.style.background = soundFx ? 'var(--accent)' : '';
+        btn.style.color = soundFx ? '#fff' : '';
     }
 
     function highlightChineseMeaning(exampleCn, chinese) {
@@ -2685,7 +2765,7 @@ function initApp() {
     }
 
     function saveProgress() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ masteredIndices, wrongWords, hardWords: [...hardWords], wrongQueue, reviewQueue, questionCounter, slashedWords: [...slashedWords], testMode, testDirection, darkMode, fontSizes, selectedDate, autoSpeak, hideExamples })); } catch (e) { }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ masteredIndices, wrongWords, hardWords: [...hardWords], wrongQueue, reviewQueue, questionCounter, slashedWords: [...slashedWords], testMode, testDirection, darkMode, fontSizes, selectedDate, autoSpeak, soundFx, hideExamples })); } catch (e) { }
     }
 
     function loadProgress() {
@@ -2702,7 +2782,9 @@ function initApp() {
                 darkMode = d.darkMode ?? false; fontSizes = d.fontSizes || { large: 26, medium: 15, small: 12 };
                 selectedDate = d.selectedDate || '0509';
                 autoSpeak = d.autoSpeak ?? false;
+                soundFx = d.soundFx ?? true;
                 hideExamples = d.hideExamples ?? false;
+                updateSoundFxBtn();
                 if (autoSpeak) {
                     document.getElementById('btnAutoSpeak').textContent = '♪ On';
                     document.getElementById('btnAutoSpeak').style.background = 'var(--accent)';
